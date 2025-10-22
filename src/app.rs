@@ -90,9 +90,8 @@ impl App {
         match self.selected_tab {
             0 => {
                 // timer
-                match key_event.code {
-                    KeyCode::Char(' ') => self.pomodoro.cycle().await,
-                    _ => {}
+                if let KeyCode::Char(' ') = key_event.code {
+                    self.pomodoro.cycle().await
                 }
             }
             // settings
@@ -178,6 +177,7 @@ impl App {
         if current_iterations != iterations {
             self.pomodoro.set_setting(iterations).await;
         }
+        self.settings.borrow().save_to_file().unwrap();
     }
     pub async fn overwrite_timer(&mut self) {
         self.pomodoro.timer.stop().await;
