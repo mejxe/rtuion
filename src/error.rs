@@ -18,12 +18,47 @@ pub enum SettingsError {
     IO(#[from] io::Error),
 }
 #[derive(thiserror::Error, Debug)]
+pub enum StatsError {
+    #[error("Failed to create a PixelaUser: Credentials not provided")]
+    UserNotProvided(),
+    #[error("Stats module is off, turn on and login")]
+    StatsTrackingTurnedOff(),
+    #[error("You have no subjects, make sure to sync")]
+    SubjectsAreEmpty(),
+}
+#[derive(thiserror::Error, Debug)]
+pub enum PixelaResponseError {
+    #[error("{1}: {0}")]
+    RetryableError(String, reqwest::StatusCode),
+    #[error("{1}: {0}")]
+    FatalError(String, reqwest::StatusCode),
+}
+
+#[derive(thiserror::Error, Debug)]
 pub enum Error {
     #[error("{0}")]
     IO(#[from] io::Error),
 
     #[error("Settings Error: {0}")]
     SettingsError(#[from] SettingsError),
-    
+
+    #[error("Stats Error: {0}")]
+    StatsError(#[from] StatsError),
+
+    #[error("Request Error: {0}")]
+    RequestError(#[from] reqwest::Error),
+
+    #[error("Pixela Error: {0}")]
+    PixelaResponseError(#[from] PixelaResponseError),
+
+    #[error("Toml Deserialization Error: {0}")]
+    TomlDeError(#[from] toml::de::Error),
+    #[error("Toml Serialization Error: {0}")]
+    TomlSerError(#[from] toml::ser::Error),
 }
-pub type Result<T> = std::result::Result<T,Error>;
+impl Error {
+    pub fn handle_error_and_consume_data<T>(result: Result<T>) {
+        result.unwrap();
+    }
+}
+pub type Result<T> = std::result::Result<T, Error>;

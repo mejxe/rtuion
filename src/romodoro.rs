@@ -5,6 +5,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{
     app::Event,
+    error::{Error, Result, StatsError},
     pixela_client::{self, PixelaClient},
     settings::{self, PomodoroSettings, SettingsTab},
     stats::PixelaUser,
@@ -19,6 +20,7 @@ pub struct Pomodoro {
     settings: Rc<RefCell<SettingsTab>>,
     pixela_client: Option<PixelaClient>,
     duration_since_last_save: i64,
+    current_subject_index: u8,
 }
 impl Pomodoro {
     pub fn new(
@@ -34,6 +36,9 @@ impl Pomodoro {
         let mut pixela_client = None; // create PixelaClient for logging progress
         match &mut settings.borrow_mut().stats_setting {
             px_stats if px_stats.stats_on => {
+                if px_stats.pixela_username.is_none() || px_stats.pixela_token.is_none() {
+                    px_stats.init_stats();
+                }
                 let user: PixelaUser = PixelaUser::new(
                     px_stats
                         .pixela_username
@@ -44,11 +49,10 @@ impl Pomodoro {
                         .clone()
                         .expect("Should be initialized."),
                 );
-                if let Ok(px_client) = PixelaClient::try_new(user) {
-                    pixela_client = Some(px_client);
-                } else {
+                if !user.validate_not_empty() {
                     px_stats.stats_on = false;
-                    // TODO: add a notification of some kind (err is in try_new)
+                } else {
+                    pixela_client = Some(PixelaClient::new(user));
                 }
             }
             _ => {}
@@ -61,6 +65,7 @@ impl Pomodoro {
             settings,
             pixela_client,
             duration_since_last_save: 0,
+            current_subject_index: 0,
         }
     }
     pub async fn create_countdown(&mut self, cancel_token: CancellationToken) {
@@ -81,6 +86,32 @@ impl Pomodoro {
     }
     pub fn get_setting_ref(&self) -> Rc<RefCell<SettingsTab>> {
         self.settings.clone()
+    }
+    pub fn try_init_pixela_client(&mut self) -> Result<PixelaClient> {
+        let px_stats = &mut self.settings.borrow_mut().stats_setting;
+        if px_stats.stats_on {
+            if px_stats.pixela_username.is_none() || px_stats.pixela_token.is_none() {
+                px_stats.init_stats();
+                return Err(StatsError::UserNotProvided().into());
+            }
+            let user: PixelaUser = PixelaUser::new(
+                px_stats
+                    .pixela_username
+                    .clone()
+                    .expect("Should be initialized"),
+                px_stats
+                    .pixela_token
+                    .clone()
+                    .expect("Should be initialized."),
+            );
+            if !user.validate_not_empty() {
+                Err(StatsError::UserNotProvided().into())
+            } else {
+                Ok(PixelaClient::new(user))
+            }
+        } else {
+            Err(StatsError::StatsTrackingTurnedOff().into())
+        }
     }
 
     pub async fn handle_timer(
@@ -120,17 +151,35 @@ impl Pomodoro {
     pub async fn set_setting(&mut self, setting: PomodoroSettings) -> Option<()> {
         self.timer.set_setting(setting).await
     }
-    pub async fn log_pixel_from_duration(&mut self) {
-        let date = chrono::Local::now();
-        let subject = self.settings.borrow().stats_setting.current_subject();
-        let duration = subject.transform_progress(self.duration_since_last_save);
-        if let Some(client) = self.pixela_client.as_mut() {
-            client.add_pixel(date, subject, duration);
+    pub fn log_pixel_from_duration(&mut self) -> Result<()> {
+        if let Some(client) = &self.pixela_client {
+            let date = chrono::Local::now();
+            let subject = client.get_subject(self.current_subject_index);
+            let duration = subject
+                .as_ref()
+                // default simply
+                // logs minutes
+                .map_or(((self.duration_since_last_save / 60) as i32).into(), |s| {
+                    s.transform_progress(self.duration_since_last_save)
+                });
+            if let Some(client) = self.pixela_client.as_mut() {
+                client.add_pixel(date, subject, duration);
+                client.save_to_file()?;
+            }
+            self.duration_since_last_save = 0;
+            Ok(())
+        } else {
+            Err(crate::error::StatsError::StatsTrackingTurnedOff().into())
         }
     }
     pub async fn handle_timer_responses(&mut self, time: i64) {
         if time == -1 && self.timer.get_iteration() < self.timer.get_total_iterations() {
             self.timer.next_iteration().await;
+            if let PomodoroState::Break(_) = self.timer.get_current_state() {
+                if let Err(err) = self.log_pixel_from_duration() {
+                    panic!("{}", err);
+                }
+            }
         } else if time == -1 && self.timer.get_iteration() > self.timer.get_total_iterations() {
             self.timer.stop().await;
         } else if time == -1 && self.timer.get_iteration() == self.timer.get_total_iterations() {
@@ -140,5 +189,12 @@ impl Pomodoro {
         } else {
             self.set_time_left(time);
         }
+    }
+
+    pub fn pixela_client(&self) -> Option<&PixelaClient> {
+        self.pixela_client.as_ref()
+    }
+    pub fn pixela_client_as_mut(&mut self) -> Option<&mut PixelaClient> {
+        self.pixela_client.as_mut()
     }
 }

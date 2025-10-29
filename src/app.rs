@@ -1,20 +1,26 @@
+use crate::error::Error;
 use crate::romodoro::Pomodoro;
 use crate::settings::*;
+use arboard::Clipboard;
 use core::panic;
-use crossterm::event::{self, KeyCode, KeyEvent, KeyEventKind};
+use crossterm::event::{self, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use derivative::Derivative;
 use ratatui::DefaultTerminal;
 use std::cell::RefCell;
 use std::io;
 use std::rc::Rc;
 use tokio_util::sync::CancellationToken;
 
-#[derive(Debug)]
+#[derive(Derivative)]
+#[derivative(Debug)]
 pub struct App {
     exit: bool,
     pomodoro: Pomodoro,
-    selected_tab: usize,
+    selected_tab: u8,
     settings: Rc<RefCell<SettingsTab>>,
     settings_popup_showing: bool,
+    #[derivative(Debug = "ignore")]
+    clipboard: Option<Clipboard>,
 }
 pub enum Event {
     TimerTick(i64),
@@ -29,6 +35,7 @@ impl App {
             selected_tab: 0,
             settings,
             settings_popup_showing: false,
+            clipboard: Clipboard::new().ok(),
         }
     }
     pub async fn run(
@@ -84,7 +91,12 @@ impl App {
         //global
         match key_event.code {
             KeyCode::Char('Q') => self.exit(),
-            KeyCode::Tab if !self.settings_popup_showing => self.change_tab(),
+            KeyCode::Tab
+                if !self.settings_popup_showing
+                    && !(self.settings.borrow().mode() == &Mode::Input) =>
+            {
+                self.change_tab()
+            }
             _ => {}
         }
         match self.selected_tab {
@@ -95,6 +107,20 @@ impl App {
                 }
             }
             // settings
+            1 if self.settings.borrow().mode() == &Mode::Input => match key_event.code {
+                KeyCode::Esc => self.settings.borrow_mut().change_mode(Mode::Normal),
+                key => {
+                    if key == KeyCode::Char('v') && key_event.modifiers == KeyModifiers::CONTROL {
+                        if let Some(clip) = self.clipboard.as_mut() {
+                            self.settings
+                                .borrow_mut()
+                                .input(key_event, Some(clip.get_text().unwrap()));
+                        }
+                    } else {
+                        self.settings.borrow_mut().input(key_event, None);
+                    }
+                }
+            },
             1 => match self.settings_popup_showing {
                 false => match key_event.code {
                     KeyCode::Down => self.settings.borrow_mut().select_down(),
@@ -103,6 +129,9 @@ impl App {
                     KeyCode::Left => self.settings.borrow_mut().decrement(),
                     KeyCode::Char(' ') => self.update_settings().await,
                     KeyCode::Char('r') => self.settings.borrow_mut().restore_defaults(),
+                    KeyCode::Enter if [4, 5].contains(&self.settings.borrow().selected_setting) => {
+                        self.settings.borrow_mut().change_mode(Mode::Input)
+                    }
                     _ => {}
                 },
                 true => match key_event.code {
@@ -115,6 +144,16 @@ impl App {
                     _ => {}
                 },
             },
+            2 => {
+                if let Some(pixela_client) = self.pomodoro.pixela_client_as_mut() {
+                    match key_event.code {
+                        KeyCode::Char('L') => {
+                            Error::handle_error_and_consume_data(pixela_client.log_in().await)
+                        }
+                        _ => {}
+                    };
+                }
+            }
             _ => {}
         }
     }
@@ -177,7 +216,7 @@ impl App {
         if current_iterations != iterations {
             self.pomodoro.set_setting(iterations).await;
         }
-        self.settings.borrow().save_to_file().unwrap();
+        self.settings.borrow().save_to_file().unwrap(); // TODO: DANGER!!
     }
     pub async fn overwrite_timer(&mut self) {
         self.pomodoro.timer.stop().await;
@@ -185,7 +224,7 @@ impl App {
         self.update_settings().await;
     }
 
-    pub fn get_selected_tab(&self) -> usize {
+    pub fn get_selected_tab(&self) -> u8 {
         self.selected_tab
     }
     pub fn get_settings_ref(&self) -> Rc<RefCell<SettingsTab>> {

@@ -4,9 +4,12 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+arboard = {version="3.6.1", features=["wayland-data-control"]}
 chrono = "0.4.39"
 crossterm = "0.28.1"
+derivative = "2.2.0"
 directories = "6.0.0"
+futures = "0.3.31"
 num = "0.4.3"
 ratatui = "0.29.0"
 reqwest = { version = "0.12.12", features = ["json"] }

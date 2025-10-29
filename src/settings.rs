@@ -1,3 +1,4 @@
+use std::process::exit;
 use std::{fs, io};
 
 use crate::error::{Result, SettingsError};
@@ -5,18 +6,27 @@ use crate::stats::Subject;
 use crate::{
     timer::*, BREAK_TIME_INCR, DEFAULT_BREAK, DEFAULT_ITERATIONS, DEFAULT_WORK, WORK_TIME_INCR,
 };
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use directories::ProjectDirs;
 use serde::*;
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+pub enum Mode {
+    Input,
+    #[default]
+    Normal,
+}
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct SettingsTab {
     #[serde(skip)]
-    pub selected_setting: usize,
+    pub selected_setting: u8,
+    #[serde(skip)]
+    mode: Mode,
     pub ui_settings: UISettings,
     pub timer_settings: TimerSettings,
     pub stats_setting: StatsSettings,
 }
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct UISettings {
     pub pause_after_state_change: bool,
     pub hide_work_countdown: bool,
@@ -40,12 +50,15 @@ pub struct StatsSettings {
     pub stats_on: bool,
     pub pixela_username: Option<String>,
     pub pixela_token: Option<String>,
-    pub subjects: Vec<Subject>,
-    pub current_subject_index: usize,
 }
 impl StatsSettings {
-    pub fn current_subject(&self) -> Subject {
-        self.subjects[self.current_subject_index].clone()
+    pub fn init_stats(&mut self) {
+        if self.pixela_username.is_none() {
+            self.pixela_username = Some(String::new());
+        }
+        if self.pixela_token.is_none() {
+            self.pixela_token = Some(String::new());
+        }
     }
 }
 
@@ -92,15 +105,22 @@ impl SettingsTab {
     }
 
     pub fn select_down(&mut self) {
-        if self.selected_setting == 4 {
+        if !self.stats_setting.stats_on && (self.selected_setting == 3) {
+            self.selected_setting = 5;
+        }
+
+        if self.selected_setting == 7 {
             self.selected_setting = 0;
         } else {
             self.selected_setting += 1
         }
     }
     pub fn select_up(&mut self) {
-        if self.selected_setting == 0 {
+        if !self.stats_setting.stats_on && (self.selected_setting == 6) {
             self.selected_setting = 4;
+        }
+        if self.selected_setting == 0 {
+            self.selected_setting = 7;
         } else {
             self.selected_setting -= 1
         }
@@ -108,17 +128,18 @@ impl SettingsTab {
     pub fn decrement(&mut self) {
         match self.selected_setting {
             0 if self.timer_settings.work_time - WORK_TIME_INCR != 0 => {
-                self.timer_settings.work_time -= WORK_TIME_INCR
+                self.timer_settings.work_time = 10;
             }
             1 if self.timer_settings.break_time - BREAK_TIME_INCR != 0 => {
                 self.timer_settings.break_time -= BREAK_TIME_INCR
             }
             2 if self.timer_settings.iterations - 1 > 0 => self.timer_settings.iterations -= 1,
-            3 => {
+            3 => self.stats_setting.stats_on = !self.stats_setting.stats_on,
+            6 => {
                 self.ui_settings.pause_after_state_change =
                     !self.ui_settings.pause_after_state_change
             }
-            4 => self.ui_settings.hide_work_countdown = !self.ui_settings.hide_work_countdown,
+            7 => self.ui_settings.hide_work_countdown = !self.ui_settings.hide_work_countdown,
             _ => {}
         }
     }
@@ -127,20 +148,63 @@ impl SettingsTab {
             0 => self.timer_settings.work_time += WORK_TIME_INCR,
             1 => self.timer_settings.break_time += BREAK_TIME_INCR,
             2 => self.timer_settings.iterations += 1,
-            3 => {
+            3 => self.set_stats(),
+            6 => {
                 self.ui_settings.pause_after_state_change =
                     !self.ui_settings.pause_after_state_change
             }
-            4 => self.ui_settings.hide_work_countdown = !self.ui_settings.hide_work_countdown,
+            7 => self.ui_settings.hide_work_countdown = !self.ui_settings.hide_work_countdown,
             _ => {}
         }
     }
-}
-impl Default for UISettings {
-    fn default() -> Self {
-        UISettings {
-            pause_after_state_change: false,
-            hide_work_countdown: false,
+    pub fn set_stats(&mut self) {
+        self.stats_setting.stats_on = !self.stats_setting.stats_on;
+        if self.stats_setting.stats_on {
+            self.stats_setting.init_stats();
+        }
+    }
+    pub fn change_mode(&mut self, mode: Mode) {
+        self.mode = mode;
+    }
+    pub fn mode(&self) -> &Mode {
+        &self.mode
+    }
+    pub fn input(&mut self, key: KeyEvent, clipboard_response: Option<String>) {
+        match self.selected_setting {
+            4 => SettingsTab::process_input(
+                key,
+                self.stats_setting.pixela_username.as_mut(),
+                clipboard_response,
+            ),
+            5 => SettingsTab::process_input(
+                key,
+                self.stats_setting.pixela_token.as_mut(),
+                clipboard_response,
+            ),
+            _ => {}
+        }
+    }
+    pub fn process_input(
+        key: KeyEvent,
+        value_to_modify: Option<&mut String>,
+        clipboard_response: Option<String>,
+    ) {
+        if let Some(val_to_modify) = value_to_modify {
+            match key.code {
+                KeyCode::Backspace if !val_to_modify.is_empty() => {
+                    val_to_modify.pop();
+                }
+                KeyCode::Char('v') if key.modifiers == KeyModifiers::CONTROL => {
+                    if let Some(clip) = clipboard_response {
+                        val_to_modify.clear();
+                        val_to_modify.push_str(&clip);
+                    }
+                }
+                KeyCode::Char(letter) => {
+                    val_to_modify.push(letter);
+                }
+                _ => {}
+            }
         }
     }
 }
