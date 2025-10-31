@@ -12,39 +12,24 @@ use reqwest::Client;
 use serde_json::Value;
 
 use crate::stats::{self, Pixel, PixelaUser, Progress, Subject};
-pub struct StatefulList<T> {
-    items: Vec<T>,
-    state: ListState,
-}
-impl<T> StatefulList<T> {
-    pub fn new(items: Vec<T>) -> StatefulList<T> {
-        Self {
-            items,
-            state: ListState::default(),
-        }
-    }
-    pub fn set_items(&mut self, items: Vec<T>) {
-        self.items = items;
-    }
-}
 #[derive(Debug)]
 pub struct PixelaClient {
     pub client: reqwest::Client,
     pub user: stats::PixelaUser,
-    pub pixels: Vec<Pixel>,
+    pub pixels: StatefulList<Pixel>,
+    pub subjects: StatefulList<Subject>,
     pub logged_in: bool,
-    subjects: Vec<Subject>,
-    focused_pane: u8,
+    focused_pane: u8, // 0:pixels; 1:user; 2:subjects
 }
 impl PixelaClient {
     pub fn new(user: PixelaUser) -> PixelaClient {
         PixelaClient {
             client: Client::new(),
-            pixels: PixelaClient::load_pixels(&user).unwrap_or_default(),
+            pixels: StatefulList::new(PixelaClient::load_pixels(&user).unwrap_or_default()),
             user,
-            subjects: Vec::new(),
+            subjects: StatefulList::default(),
             logged_in: false,
-            focused_pane: 0,
+            focused_pane: 1,
         }
     }
     pub fn add_pixel(
@@ -66,12 +51,7 @@ impl PixelaClient {
             )));
         }
     }
-    pub fn save_to_file(&self) -> Result<()> {
-        if self.pixels.is_empty() {
-            return Err(Error::SettingsError(SettingsError::SaveError(
-                "Nothing to save".into(),
-            )));
-        }
+    pub fn save_pixels(&self) -> Result<()> {
         let path = ProjectDirs::from("romodoro", "mejxedev", "romodoro")
             .ok_or(SettingsError::HomeDirNotFound)?;
         let path = path.config_dir();
@@ -80,7 +60,7 @@ impl PixelaClient {
             fs::create_dir_all(&path)?
         }
         let filename = format!("{}.json", self.user.username());
-        let json_string: String = serde_json::to_string(&self.pixels).unwrap();
+        let json_string: String = serde_json::to_string(self.pixels.items()).unwrap();
         fs::write(path.join(filename), json_string)?;
         Ok(())
     }
@@ -105,7 +85,7 @@ impl PixelaClient {
         }
     }
     async fn send_pixels(&mut self) {
-        let mut unresolved_pixels = vec![];
+        let mut unresolved_pixels = StatefulList::default();
         while !self.pixels.is_empty() {
             let pixels = std::mem::take(&mut self.pixels);
             let futures = pixels.iter().filter_map(|pixel| match pixel {
@@ -138,7 +118,7 @@ impl PixelaClient {
         self.pixels = unresolved_pixels;
     }
     pub fn get_subject(&self, index: u8) -> Option<Subject> {
-        self.subjects.get(index as usize).cloned()
+        self.subjects.items.get(index as usize).cloned()
     }
     pub async fn log_in(&mut self) -> Result<()> {
         if !self.user.validate_not_empty() {
@@ -169,7 +149,7 @@ impl PixelaClient {
                     };
                 }
                 Ok(subjects) => {
-                    self.subjects = subjects;
+                    self.subjects.set_items(subjects);
                     break;
                 }
             }
@@ -215,9 +195,24 @@ impl PixelaClient {
     }
     pub fn change_focused_pane(&mut self, forward: bool) {
         match forward {
-            true => self.focused_pane = (self.focused_pane + 1) % 3,
-            false => self.focused_pane = (self.focused_pane - 1) % 3,
-        }
+            true => self.focused_pane = (self.focused_pane.saturating_add(1)) % 3,
+            false => {
+                self.focused_pane = {
+                    if self.focused_pane == 0 {
+                        2
+                    } else {
+                        self.focused_pane.saturating_sub(1) % 3
+                    }
+                }
+            }
+        };
+    }
+    pub fn delete_pixel(&mut self) -> Result<()> {
+        if let Some(index) = self.pixels.state.selected() {
+            self.pixels.items.remove(index);
+            self.save_pixels()?;
+        };
+        Ok(())
     }
     pub fn subjects(&self) -> Vec<&Subject> {
         self.subjects.iter().collect()
@@ -233,5 +228,104 @@ impl PixelaClient {
 
     pub fn pixels(&self) -> Vec<&Pixel> {
         self.pixels.iter().collect()
+    }
+    pub fn select_next(&mut self) {
+        match self.focused_pane {
+            0 => self.pixels.select_next(),
+            1 => {}
+            2 => self.subjects.select_next(),
+            _ => {}
+        }
+    }
+    pub fn select_previous(&mut self) {
+        match self.focused_pane {
+            0 => self.pixels.select_previous(),
+            1 => {}
+            2 => self.subjects.select_previous(),
+            _ => {}
+        }
+    }
+    pub async fn push_pixel(&mut self) -> Result<()> {
+        if let Some(index) = self.pixels.state.selected() {
+            if let Some(Pixel::Complex(pixel)) = self.pixels().get(index) {
+                loop {
+                    let response = pixel.upload(self.client.clone(), &self.user).await;
+                    match response {
+                        Ok(_) => {
+                            self.pixels().remove(index);
+                            break;
+                        }
+                        Err(err) => match err {
+                            Error::PixelaResponseError(PixelaResponseError::RetryableError(
+                                _,
+                                _,
+                            )) => {
+                                continue;
+                            }
+                            _ => return Err(err),
+                        },
+                    };
+                }
+            } else {
+                return Err(StatsError::WrongPixelData.into());
+            }
+        }
+        Ok(())
+    }
+}
+#[derive(Debug)]
+pub struct StatefulList<T> {
+    items: Vec<T>,
+    state: ListState,
+}
+impl<T> StatefulList<T> {
+    pub fn new(items: Vec<T>) -> StatefulList<T> {
+        Self {
+            items,
+            state: ListState::default(),
+        }
+    }
+    pub fn set_items(&mut self, items: Vec<T>) {
+        self.items = items;
+    }
+
+    pub fn push(&mut self, value: T) {
+        self.items.push(value)
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.items.is_empty()
+    }
+
+    pub fn iter(&self) -> std::slice::Iter<'_, T> {
+        self.items.iter()
+    }
+
+    pub fn items(&self) -> &[T] {
+        &self.items
+    }
+
+    pub fn state(&self) -> &ListState {
+        &self.state
+    }
+
+    pub fn state_mut(&mut self) -> &mut ListState {
+        &mut self.state
+    }
+
+    pub fn select_next(&mut self) {
+        self.state.select_next()
+    }
+
+    pub fn select_previous(&mut self) {
+        self.state.select_previous()
+    }
+}
+impl<T> Default for StatefulList<T> {
+    fn default() -> StatefulList<T> {
+        StatefulList {
+            items: Vec::new(),
+            state: ListState::default(),
+        }
     }
 }

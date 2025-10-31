@@ -8,6 +8,7 @@ use derivative::Derivative;
 use ratatui::DefaultTerminal;
 use std::cell::RefCell;
 use std::io;
+use std::process::exit;
 use std::rc::Rc;
 use tokio_util::sync::CancellationToken;
 
@@ -147,8 +148,34 @@ impl App {
             2 => {
                 if let Some(pixela_client) = self.pomodoro.pixela_client_as_mut() {
                     match key_event.code {
-                        KeyCode::Char('L') => {
+                        KeyCode::Char('L') if !pixela_client.logged_in() => {
                             Error::handle_error_and_consume_data(pixela_client.log_in().await)
+                            // TODO: ADD A NOTIFICATION INSTEAD OF UNWRAPPING
+                        }
+                        KeyCode::Right => pixela_client.change_focused_pane(true),
+                        KeyCode::Left => pixela_client.change_focused_pane(false),
+                        KeyCode::Down => pixela_client.select_next(),
+                        KeyCode::Up => pixela_client.select_previous(),
+                        KeyCode::Char(' ') if pixela_client.focused_pane() == 2 => {
+                            let index = pixela_client
+                                .subjects
+                                .state()
+                                .selected()
+                                .unwrap_or(0)
+                                .try_into()
+                                .unwrap();
+                            drop(pixela_client);
+                            self.pomodoro.set_current_subject_index(index);
+                        }
+                        KeyCode::Char('p') if pixela_client.focused_pane() == 0 => {
+                            todo!("Push pixel")
+                        }
+                        KeyCode::Char('P') if pixela_client.focused_pane() == 0 => {
+                            todo!("Push all pixels")
+                        }
+                        KeyCode::Char('d') if pixela_client.focused_pane() == 0 => {
+                            pixela_client.delete_pixel().unwrap();
+                            // TODO: ADD A NOTIFICATION INSTEAD OF UNWRAPPING
                         }
                         _ => {}
                     };
@@ -232,6 +259,9 @@ impl App {
     }
     pub fn get_pomodoro_ref(&self) -> &Pomodoro {
         &self.pomodoro
+    }
+    pub fn get_pomodoro_ref_mut(&mut self) -> &mut Pomodoro {
+        &mut self.pomodoro
     }
     pub fn get_show_popup(&self) -> bool {
         self.settings_popup_showing

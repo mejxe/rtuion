@@ -8,7 +8,7 @@ use crate::{
     error::{Error, Result, StatsError},
     pixela_client::{self, PixelaClient},
     settings::{self, PomodoroSettings, SettingsTab},
-    stats::PixelaUser,
+    stats::{PixelaUser, Subject},
     timer::{self, *},
 };
 
@@ -66,6 +66,13 @@ impl Pomodoro {
             pixela_client,
             duration_since_last_save: 0,
             current_subject_index: 0,
+        }
+    }
+    pub fn get_current_subject(&self) -> Option<Subject> {
+        if let Some(pixela) = &self.pixela_client {
+            Some(pixela.get_subject(self.current_subject_index)?)
+        } else {
+            None
         }
     }
     pub async fn create_countdown(&mut self, cancel_token: CancellationToken) {
@@ -164,7 +171,7 @@ impl Pomodoro {
                 });
             if let Some(client) = self.pixela_client.as_mut() {
                 client.add_pixel(date, subject, duration);
-                client.save_to_file()?;
+                client.save_pixels()?;
             }
             self.duration_since_last_save = 0;
             Ok(())
@@ -196,5 +203,13 @@ impl Pomodoro {
     }
     pub fn pixela_client_as_mut(&mut self) -> Option<&mut PixelaClient> {
         self.pixela_client.as_mut()
+    }
+
+    pub fn set_current_subject_index(&mut self, current_subject_index: u8) {
+        // TODO: MAKE SO SELECTING A DIFFERENT SUBJECT RESETS THE TIMER (NOTIFICATIONS!)
+        if self.timer.get_timer_started() {
+            return;
+        }
+        self.current_subject_index = current_subject_index;
     }
 }

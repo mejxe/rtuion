@@ -14,7 +14,7 @@ use ratatui::{
     Frame,
 };
 
-impl Widget for &App {
+impl Widget for &mut App {
     fn render(self, area: ratatui::prelude::Rect, buf: &mut ratatui::prelude::Buffer) {
         let tabs = ["Pomodoro Timer", "Settings", "Stats"];
         let tab_titles: Vec<Span> = tabs
@@ -94,7 +94,7 @@ impl Widget for &App {
             0 => self.get_pomodoro_ref().render(layout[1], buf),
             1 => self.get_settings_ref().borrow().render(layout[1], buf),
             2 => {
-                if let Some(stats_client) = self.get_pomodoro_ref().pixela_client() {
+                if let Some(stats_client) = self.get_pomodoro_ref_mut().pixela_client_as_mut() {
                     stats_client.render(layout[1], buf);
                 } else {
                     self.render_stats(layout[1], buf);
@@ -140,7 +140,7 @@ impl App {
         text.render(area, buf);
     }
 
-    pub fn draw(&self, frame: &mut Frame) {
+    pub fn draw(&mut self, frame: &mut Frame) {
         frame.render_widget(self, frame.area());
     }
 }

@@ -24,7 +24,9 @@ pub enum StatsError {
     #[error("Stats module is off, turn on and login")]
     StatsTrackingTurnedOff(),
     #[error("You have no subjects, make sure to sync")]
-    SubjectsAreEmpty(),
+    SubjectsAreEmpty,
+    #[error("Can't upload this pixel")]
+    WrongPixelData,
 }
 #[derive(thiserror::Error, Debug)]
 pub enum PixelaResponseError {

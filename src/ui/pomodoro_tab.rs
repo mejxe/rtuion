@@ -111,9 +111,9 @@ impl Widget for &Pomodoro {
                 Constraint::Length(1),                      // Now text
                 Constraint::Length(5),                      // Small gap
                 Constraint::Min(5),                         // ASCII timer
-                Constraint::Length(1),                      // Small gap
                 Constraint::Length(1),                      // count
-                Constraint::Length(2),                      // Small gap
+                Constraint::Length(1),                      // Subjects
+                Constraint::Length(1),                      // Small gap
                 Constraint::Length(3),                      // Progress bar
                 Constraint::Percentage(bottom_margin_percent), // Bottom margin
             ])
@@ -133,7 +133,8 @@ impl Widget for &Pomodoro {
         outer_block.render(area, buf);
         now_paragraph.render(layout[1], buf);
         timer_text.render(layout[3], buf);
-        count_paragraph.render(layout[5], buf);
+        count_paragraph.render(layout[4], buf);
+        self.render_subject_select(layout[5], buf);
         gauge.render(gauge_layout[1], buf);
 
         // Set background color while preserving existing styles
@@ -145,6 +146,28 @@ impl Widget for &Pomodoro {
                 }
             }
         }
+    }
+}
+impl Pomodoro {
+    fn render_subject_select(
+        &self,
+        area: ratatui::prelude::Rect,
+        buf: &mut ratatui::prelude::Buffer,
+    ) {
+        let subject = self.get_current_subject();
+        let subject_name: String = match &subject {
+            Some(subject) => subject.graph_name().to_string(),
+            None => "No subjects".into(),
+        };
+        let style = match &subject {
+            Some(_) if self.timer.get_timer_started() => Style::default().fg(Color::Gray),
+            Some(_) => Style::default().fg(YELLOW),
+            None => Style::default().fg(Color::Gray),
+        };
+        let subject_paragraph = Paragraph::new(format!("Tracking: {subject_name}"))
+            .alignment(Alignment::Center)
+            .style(style);
+        subject_paragraph.render(area, buf);
     }
 }
 fn format_ascii_time(input: &str) -> String {

@@ -184,6 +184,9 @@ impl Timer {
     pub fn set_config(&mut self, settings: Rc<RefCell<SettingsTab>>) {
         self.settings = settings;
     }
+    pub fn get_timer_started(&self) -> bool {
+        self.get_total_elapsed_time() != 0
+    }
 }
 impl Countdown {
     pub async fn run(

@@ -11,13 +11,13 @@ use ratatui::style::Color;
 use ratatui::style::Modifier;
 use ratatui::style::Style;
 use ratatui::text::Line;
-use ratatui::widgets::Paragraph;
 use ratatui::widgets::Widget;
 use ratatui::widgets::{Block, List};
 use ratatui::widgets::{BorderType, HighlightSpacing};
 use ratatui::widgets::{Borders, ListItem};
+use ratatui::widgets::{Paragraph, StatefulWidget};
 const SELECTED_STYLE: Style = Style::new().bg(SLATE.c800).add_modifier(Modifier::BOLD);
-impl Widget for &PixelaClient {
+impl Widget for &mut PixelaClient {
     fn render(self, area: Rect, buf: &mut Buffer) {
         let main_layout = Layout::default()
             .direction(Direction::Vertical)
@@ -63,11 +63,16 @@ impl Widget for &PixelaClient {
 }
 
 impl PixelaClient {
-    fn render_pixels(&self, area: Rect, buf: &mut Buffer) {
+    fn render_pixels(&mut self, area: Rect, buf: &mut Buffer) {
+        let border_type = if self.focused_pane() == 0 {
+            BorderType::Double
+        } else {
+            BorderType::Rounded
+        };
         let block = Block::default()
             .title(" Pixels ")
             .borders(Borders::ALL)
-            .border_type(BorderType::Rounded)
+            .border_type(border_type)
             .border_style(Style::default().fg(BLUE));
 
         let inner_area = block.inner(area);
@@ -83,20 +88,31 @@ impl PixelaClient {
                 );
             no_pixels_text.render(inner_area, buf);
         } else {
+            if self.focused_pane() == 0 && self.pixels.state().selected().is_none() {
+                self.pixels.state_mut().select_first();
+            } else if self.focused_pane() != 0 {
+                self.pixels.state_mut().select(None);
+            }
+
             let list = List::new(self.pixels.iter().map(ListItem::from).collect::<Vec<_>>())
                 .block(block)
                 .highlight_style(SELECTED_STYLE)
                 .highlight_symbol(">")
                 .highlight_spacing(HighlightSpacing::Always);
-            list.render(area, buf);
+            StatefulWidget::render(list, area, buf, self.pixels.state_mut());
         }
     }
 
     fn render_sync(&self, area: Rect, buf: &mut Buffer) {
+        let border_type = if self.focused_pane() == 1 {
+            BorderType::Double
+        } else {
+            BorderType::Rounded
+        };
         let block = Block::default()
             .title(" Sync ")
             .borders(Borders::ALL)
-            .border_type(BorderType::Rounded)
+            .border_type(border_type)
             .border_style(Style::default().fg(GREEN));
 
         let inner_area = block.inner(area);
@@ -136,11 +152,16 @@ impl PixelaClient {
         message_text.render(sync_layout[1], buf);
     }
 
-    fn render_subjects(&self, area: Rect, buf: &mut Buffer) {
+    fn render_subjects(&mut self, area: Rect, buf: &mut Buffer) {
+        let border_type = if self.focused_pane() == 2 {
+            BorderType::Double
+        } else {
+            BorderType::Rounded
+        };
         let block = Block::default()
             .title(" Subjects ")
             .borders(Borders::ALL)
-            .border_type(BorderType::Rounded)
+            .border_type(border_type)
             .border_style(Style::default().fg(YELLOW));
 
         let inner_area = block.inner(area);
@@ -156,6 +177,11 @@ impl PixelaClient {
                 );
             no_subjects_text.render(inner_area, buf);
         } else {
+            if self.focused_pane() == 2 && self.subjects.state().selected().is_none() {
+                self.subjects.state_mut().select_first();
+            } else if self.focused_pane() != 2 {
+                self.subjects.state_mut().select(None);
+            }
             let list = List::new(
                 self.subjects()
                     .iter()
@@ -166,7 +192,7 @@ impl PixelaClient {
             .highlight_style(SELECTED_STYLE)
             .highlight_symbol(">")
             .highlight_spacing(HighlightSpacing::Always);
-            list.render(area, buf);
+            StatefulWidget::render(list, area, buf, self.subjects.state_mut());
         }
     }
 
