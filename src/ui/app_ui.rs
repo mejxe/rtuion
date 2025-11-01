@@ -90,6 +90,10 @@ impl Widget for &mut App {
                     .border_type(BorderType::Rounded)
                     .title("You sure?"),
             );
+        if let Some(popup) = self.popup() {
+            popup.render(area, buf);
+            return;
+        }
         match selected_tab {
             0 => self.get_pomodoro_ref().render(layout[1], buf),
             1 => self.get_settings_ref().borrow().render(layout[1], buf),
@@ -101,14 +105,6 @@ impl Widget for &mut App {
                 }
             }
             _ => {}
-        }
-        if self.get_show_popup() && selected_tab == 1 {
-            Clear.render(area, buf);
-            popup_block.render(popup_area, buf);
-            question_paragraph.render(popup_layout[0], buf);
-            yes_paragraph.render(popup_yes_no_layout[0], buf);
-            no_paragraph.render(popup_yes_no_layout[1], buf);
-            return;
         }
         self.render_footer(layout[2], buf);
     }

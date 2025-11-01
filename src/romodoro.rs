@@ -94,7 +94,7 @@ impl Pomodoro {
     pub fn get_setting_ref(&self) -> Rc<RefCell<SettingsTab>> {
         self.settings.clone()
     }
-    pub fn try_init_pixela_client(&mut self) -> Result<PixelaClient> {
+    pub fn try_init_pixela_client(&mut self) -> Result<()> {
         let px_stats = &mut self.settings.borrow_mut().stats_setting;
         if px_stats.stats_on {
             if px_stats.pixela_username.is_none() || px_stats.pixela_token.is_none() {
@@ -114,7 +114,8 @@ impl Pomodoro {
             if !user.validate_not_empty() {
                 Err(StatsError::UserNotProvided().into())
             } else {
-                Ok(PixelaClient::new(user))
+                self.pixela_client = Some(PixelaClient::new(user));
+                Ok(())
             }
         } else {
             Err(StatsError::StatsTrackingTurnedOff().into())

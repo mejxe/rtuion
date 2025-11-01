@@ -1,5 +1,7 @@
 use std::io;
 
+use crate::popup::Popup;
+
 #[derive(thiserror::Error, Debug)]
 pub enum SettingsError {
     #[error("Update failed! Stop the timer first")]
@@ -59,8 +61,12 @@ pub enum Error {
     TomlSerError(#[from] toml::ser::Error),
 }
 impl Error {
-    pub fn handle_error_and_consume_data<T>(result: Result<T>) {
-        result.unwrap();
+    pub fn handle_error_and_consume_data<T>(result: Result<T>) -> Option<Popup> {
+        if let Err(e) = result {
+            Some(Popup::from(e))
+        } else {
+            None
+        }
     }
 }
 pub type Result<T> = std::result::Result<T, Error>;

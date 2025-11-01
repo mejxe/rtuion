@@ -1,4 +1,5 @@
 use crate::error::Error;
+use crate::popup::{Popup, PopupKind};
 use crate::romodoro::Pomodoro;
 use crate::settings::*;
 use arboard::Clipboard;
@@ -19,35 +20,41 @@ pub struct App {
     pomodoro: Pomodoro,
     selected_tab: u8,
     settings: Rc<RefCell<SettingsTab>>,
-    settings_popup_showing: bool,
+    popup: Option<Popup>,
     #[derivative(Debug = "ignore")]
     clipboard: Option<Clipboard>,
+    event_tx: tokio::sync::mpsc::Sender<Event>,
 }
 pub enum Event {
     TimerTick(i64),
     KeyPress(KeyEvent),
     TerminalEvent,
+    OverwriteTimer,
 }
 impl App {
-    pub fn new(pomodoro: Pomodoro, settings: Rc<RefCell<SettingsTab>>) -> Self {
+    pub fn new(
+        pomodoro: Pomodoro,
+        settings: Rc<RefCell<SettingsTab>>,
+        event_tx: tokio::sync::mpsc::Sender<Event>,
+    ) -> Self {
         App {
             pomodoro,
             exit: false,
             selected_tab: 0,
             settings,
-            settings_popup_showing: false,
+            popup: None,
             clipboard: Clipboard::new().ok(),
+            event_tx,
         }
     }
     pub async fn run(
         &mut self,
         terminal: &mut DefaultTerminal,
         mut rx: tokio::sync::mpsc::Receiver<Event>,
-        tx: tokio::sync::mpsc::Sender<Event>,
         mut time_rx: tokio::sync::mpsc::Receiver<i64>,
     ) -> io::Result<()> {
-        let tx_inputs = tx.clone();
-        let tx_timer = tx.clone();
+        let tx_inputs = self.event_tx.clone();
+        let tx_timer = self.event_tx.clone();
 
         let cancelation_token = tokio_util::sync::CancellationToken::new();
         let input_cancel = cancelation_token.clone();
@@ -79,6 +86,7 @@ impl App {
                         self.pomodoro.handle_timer_responses(time).await;
                     }
                     Event::TerminalEvent => {}
+                    Event::OverwriteTimer => self.overwrite_timer().await,
                 }
             }
             terminal.draw(|frame| self.draw(frame))?;
@@ -93,13 +101,27 @@ impl App {
         match key_event.code {
             KeyCode::Char('Q') => self.exit(),
             KeyCode::Tab
-                if !self.settings_popup_showing
-                    && !(self.settings.borrow().mode() == &Mode::Input) =>
+                if self.popup().is_none() && !(self.settings.borrow().mode() == &Mode::Input) =>
             {
                 self.change_tab()
             }
             _ => {}
         }
+        // popup
+        if let Some(popup) = &self.popup {
+            match popup.kind {
+                PopupKind::YesNoPopup(callback) => match key_event.code {
+                    KeyCode::Char('y') => {
+                        callback(self);
+                        self.clear_popup()
+                    }
+                    KeyCode::Char('n') => self.clear_popup(),
+                    _ => {}
+                },
+                PopupKind::ErrorPopup(_) => self.clear_popup(),
+            }
+            return;
+        };
         match self.selected_tab {
             0 => {
                 // timer
@@ -109,7 +131,9 @@ impl App {
             }
             // settings
             1 if self.settings.borrow().mode() == &Mode::Input => match key_event.code {
-                KeyCode::Esc => self.settings.borrow_mut().change_mode(Mode::Normal),
+                KeyCode::Esc | KeyCode::Enter => {
+                    self.settings.borrow_mut().change_mode(Mode::Normal)
+                }
                 key => {
                     if key == KeyCode::Char('v') && key_event.modifiers == KeyModifiers::CONTROL {
                         if let Some(clip) = self.clipboard.as_mut() {
@@ -122,40 +146,33 @@ impl App {
                     }
                 }
             },
-            1 => match self.settings_popup_showing {
-                false => match key_event.code {
-                    KeyCode::Down => self.settings.borrow_mut().select_down(),
-                    KeyCode::Up => self.settings.borrow_mut().select_up(),
-                    KeyCode::Right => self.settings.borrow_mut().increment(),
-                    KeyCode::Left => self.settings.borrow_mut().decrement(),
-                    KeyCode::Char(' ') => self.update_settings().await,
-                    KeyCode::Char('r') => self.settings.borrow_mut().restore_defaults(),
-                    KeyCode::Enter if [4, 5].contains(&self.settings.borrow().selected_setting) => {
-                        self.settings.borrow_mut().change_mode(Mode::Input)
-                    }
-                    _ => {}
-                },
-                true => match key_event.code {
-                    KeyCode::Char('y') if self.settings_popup_showing => {
-                        self.overwrite_timer().await
-                    }
-                    KeyCode::Char('n') if self.settings_popup_showing => {
-                        self.settings_popup_showing = false
-                    }
-                    _ => {}
-                },
+            1 => match key_event.code {
+                KeyCode::Down | KeyCode::Char('j') => self.settings.borrow_mut().select_down(),
+                KeyCode::Up | KeyCode::Char('k') => self.settings.borrow_mut().select_up(),
+                KeyCode::Right | KeyCode::Char('h') => self.settings.borrow_mut().increment(),
+                KeyCode::Left | KeyCode::Char('l') => self.settings.borrow_mut().decrement(),
+                KeyCode::Char(' ') => self.update_settings().await,
+                KeyCode::Char('r') => self.settings.borrow_mut().restore_defaults(),
+                KeyCode::Enter if [4, 5].contains(&self.settings.borrow().selected_setting) => {
+                    self.settings.borrow_mut().change_mode(Mode::Input)
+                }
+                _ => {}
             },
             2 => {
                 if let Some(pixela_client) = self.pomodoro.pixela_client_as_mut() {
                     match key_event.code {
                         KeyCode::Char('L') if !pixela_client.logged_in() => {
-                            Error::handle_error_and_consume_data(pixela_client.log_in().await)
-                            // TODO: ADD A NOTIFICATION INSTEAD OF UNWRAPPING
+                            let res = pixela_client.log_in().await;
+                            self.set_popup_opt(Error::handle_error_and_consume_data(res));
                         }
-                        KeyCode::Right => pixela_client.change_focused_pane(true),
-                        KeyCode::Left => pixela_client.change_focused_pane(false),
-                        KeyCode::Down => pixela_client.select_next(),
-                        KeyCode::Up => pixela_client.select_previous(),
+                        KeyCode::Right | KeyCode::Char('l') => {
+                            pixela_client.change_focused_pane(true)
+                        }
+                        KeyCode::Left | KeyCode::Char('h') => {
+                            pixela_client.change_focused_pane(false)
+                        }
+                        KeyCode::Down | KeyCode::Char('j') => pixela_client.select_next(),
+                        KeyCode::Up | KeyCode::Char('k') => pixela_client.select_previous(),
                         KeyCode::Char(' ') if pixela_client.focused_pane() == 2 => {
                             let index = pixela_client
                                 .subjects
@@ -164,7 +181,7 @@ impl App {
                                 .unwrap_or(0)
                                 .try_into()
                                 .unwrap();
-                            drop(pixela_client);
+                            let _ = pixela_client;
                             self.pomodoro.set_current_subject_index(index);
                         }
                         KeyCode::Char('p') if pixela_client.focused_pane() == 0 => {
@@ -174,8 +191,9 @@ impl App {
                             todo!("Push all pixels")
                         }
                         KeyCode::Char('d') if pixela_client.focused_pane() == 0 => {
-                            pixela_client.delete_pixel().unwrap();
-                            // TODO: ADD A NOTIFICATION INSTEAD OF UNWRAPPING
+                            if let Err(e) = pixela_client.delete_pixel() {
+                                self.set_popup(e.into());
+                            }
                         }
                         _ => {}
                     };
@@ -213,9 +231,15 @@ impl App {
             };
         }
     }
+    fn ask_overwrite_timer(&mut self) {
+        let _ = self.event_tx.try_send(Event::OverwriteTimer);
+    }
     async fn update_settings(&mut self) {
         if self.pomodoro.timer.get_running() {
-            self.settings_popup_showing = true;
+            self.set_popup(Popup::yes_no(
+                "This will overwrite current progress".into(),
+                App::ask_overwrite_timer,
+            ));
             return;
         }
         let break_time = self
@@ -243,11 +267,12 @@ impl App {
         if current_iterations != iterations {
             self.pomodoro.set_setting(iterations).await;
         }
+        // save settings and overwrite existing pixela_client
         self.settings.borrow().save_to_file().unwrap(); // TODO: DANGER!!
+        Error::handle_error_and_consume_data(self.pomodoro.try_init_pixela_client());
     }
     pub async fn overwrite_timer(&mut self) {
         self.pomodoro.timer.stop().await;
-        self.settings_popup_showing = false;
         self.update_settings().await;
     }
 
@@ -263,9 +288,6 @@ impl App {
     pub fn get_pomodoro_ref_mut(&mut self) -> &mut Pomodoro {
         &mut self.pomodoro
     }
-    pub fn get_show_popup(&self) -> bool {
-        self.settings_popup_showing
-    }
 
     fn change_tab(&mut self) {
         if self.selected_tab == 2 {
@@ -277,6 +299,20 @@ impl App {
 
     fn exit(&mut self) {
         self.exit = true;
+    }
+
+    pub fn popup(&self) -> Option<&Popup> {
+        self.popup.as_ref()
+    }
+    pub fn clear_popup(&mut self) {
+        self.popup = None;
+    }
+
+    pub fn set_popup(&mut self, popup: Popup) {
+        self.popup = Some(popup);
+    }
+    pub fn set_popup_opt(&mut self, popup: Option<Popup>) {
+        self.popup = popup;
     }
 }
 
