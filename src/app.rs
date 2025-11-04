@@ -30,6 +30,7 @@ pub enum Event {
     KeyPress(KeyEvent),
     TerminalEvent,
     OverwriteTimer,
+    SendPixels,
 }
 impl App {
     pub fn new(
@@ -87,6 +88,13 @@ impl App {
                     }
                     Event::TerminalEvent => {}
                     Event::OverwriteTimer => self.overwrite_timer().await,
+                    Event::SendPixels => {
+                        if let Some(pixela) = self.get_pomodoro_ref_mut().pixela_client_as_mut() {
+                            if let Err(err) = pixela.send_pixels().await {
+                                self.set_popup(err.into());
+                            }
+                        }
+                    }
                 }
             }
             terminal.draw(|frame| self.draw(frame))?;
@@ -110,14 +118,16 @@ impl App {
         // popup
         if let Some(popup) = &self.popup {
             match popup.kind {
-                PopupKind::YesNoPopup(callback) => match key_event.code {
-                    KeyCode::Char('y') => {
-                        callback(self);
-                        self.clear_popup()
+                PopupKind::YesNoPopup(callback) | PopupKind::SendPixelsPopup(callback, _) => {
+                    match key_event.code {
+                        KeyCode::Char('y') => {
+                            callback(self);
+                            self.clear_popup()
+                        }
+                        KeyCode::Char('n') => self.clear_popup(),
+                        _ => {}
                     }
-                    KeyCode::Char('n') => self.clear_popup(),
-                    _ => {}
-                },
+                }
                 PopupKind::ErrorPopup(_) => self.clear_popup(),
             }
             return;
@@ -149,8 +159,8 @@ impl App {
             1 => match key_event.code {
                 KeyCode::Down | KeyCode::Char('j') => self.settings.borrow_mut().select_down(),
                 KeyCode::Up | KeyCode::Char('k') => self.settings.borrow_mut().select_up(),
-                KeyCode::Right | KeyCode::Char('h') => self.settings.borrow_mut().increment(),
-                KeyCode::Left | KeyCode::Char('l') => self.settings.borrow_mut().decrement(),
+                KeyCode::Right | KeyCode::Char('l') => self.settings.borrow_mut().increment(),
+                KeyCode::Left | KeyCode::Char('h') => self.settings.borrow_mut().decrement(),
                 KeyCode::Char(' ') => self.update_settings().await,
                 KeyCode::Char('r') => self.settings.borrow_mut().restore_defaults(),
                 KeyCode::Enter if [4, 5].contains(&self.settings.borrow().selected_setting) => {
@@ -184,11 +194,30 @@ impl App {
                             let _ = pixela_client;
                             self.pomodoro.set_current_subject_index(index);
                         }
+                        KeyCode::Char(' ') if pixela_client.focused_pane() == 0 => {
+                            let index = pixela_client.pixels.state().selected().unwrap_or(0);
+                            if pixela_client.selected_to_send(index) {
+                                pixela_client.unselect_pixel(index);
+                            } else {
+                                pixela_client.select_pixel(index);
+                            }
+                        }
                         KeyCode::Char('p') if pixela_client.focused_pane() == 0 => {
                             todo!("Push pixel")
                         }
-                        KeyCode::Char('P') if pixela_client.focused_pane() == 0 => {
-                            todo!("Push all pixels")
+                        KeyCode::Char('P')
+                            if (pixela_client.focused_pane() == 0
+                                && !pixela_client.pixels_to_send_is_empty()
+                                && pixela_client.logged_in) =>
+                        {
+                            if let Some(pixels) = self.pomodoro.pixela_client() {
+                                let pixels = pixels.get_selected_pixels();
+                                self.set_popup(Popup::pixel_list(
+                                    "These pixels will be sent".into(),
+                                    App::ask_send_pixels,
+                                    pixels,
+                                ));
+                            }
                         }
                         KeyCode::Char('d') if pixela_client.focused_pane() == 0 => {
                             if let Err(e) = pixela_client.delete_pixel() {
@@ -233,6 +262,9 @@ impl App {
     }
     fn ask_overwrite_timer(&mut self) {
         let _ = self.event_tx.try_send(Event::OverwriteTimer);
+    }
+    fn ask_send_pixels(&mut self) {
+        let _ = self.event_tx.try_send(Event::SendPixels);
     }
     async fn update_settings(&mut self) {
         if self.pomodoro.timer.get_running() {

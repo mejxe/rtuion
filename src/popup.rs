@@ -1,4 +1,7 @@
-use crate::app::App;
+use futures::stream::Any;
+use ratatui::widgets::{List, ListState};
+
+use crate::{app::App, pixela_client::StatefulList, stats::Pixel};
 
 #[derive(Debug)]
 pub struct Popup {
@@ -9,6 +12,7 @@ pub struct Popup {
 #[derive(Debug)]
 pub enum PopupKind {
     YesNoPopup(fn(&mut App)),
+    SendPixelsPopup(fn(&mut App), Vec<Pixel>),
     ErrorPopup(crate::error::Error),
 }
 impl PopupKind {
@@ -21,6 +25,7 @@ impl Popup {
         let interactive = match kind {
             PopupKind::YesNoPopup(_) => true,
             PopupKind::ErrorPopup(_) => false,
+            PopupKind::SendPixelsPopup(_, _) => true,
         };
         Self {
             message,
@@ -32,6 +37,13 @@ impl Popup {
         Self {
             message,
             kind: PopupKind::YesNoPopup(callback),
+            interactive: true,
+        }
+    }
+    pub fn pixel_list(message: String, callback: fn(&mut App), pixels: Vec<Pixel>) -> Self {
+        Self {
+            message,
+            kind: PopupKind::SendPixelsPopup(callback, pixels),
             interactive: true,
         }
     }

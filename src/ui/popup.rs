@@ -2,15 +2,16 @@ use ratatui::{
     layout::{Alignment, Constraint, Flex, Layout, Rect},
     style::{Color, Style, Stylize},
     text::Text,
-    widgets::{Block, BorderType, Borders, Clear, Paragraph, Widget, Wrap},
+    widgets::{Block, BorderType, Borders, Clear, List, ListItem, Paragraph, Widget, Wrap},
 };
 
 use crate::{
     app::App,
     popup::{Popup, PopupKind},
+    stats::Pixel,
 };
 
-use super::{BG, GREEN, RED, YELLOW};
+use super::{stats_tab::PixelToListWrapper, BG, GREEN, RED, YELLOW};
 
 impl Widget for &Popup {
     fn render(self, area: ratatui::prelude::Rect, buf: &mut ratatui::prelude::Buffer)
@@ -27,6 +28,9 @@ impl Widget for &Popup {
             }
             PopupKind::ErrorPopup(error) => {
                 self.render_error_popup(popup_area, buf, error);
+            }
+            PopupKind::SendPixelsPopup(_, pixels) => {
+                self.render_confirm_list_popup(popup_area, buf, pixels);
             }
         }
     }
@@ -106,7 +110,7 @@ impl Popup {
             .constraints([Constraint::Percentage(70), Constraint::Percentage(30)])
             .split(area);
 
-        let error_paragraph = Paragraph::new(self.message.clone())
+        let error_paragraph = Paragraph::new(format!("{}\n{}", self.message.clone(), error))
             .alignment(Alignment::Center)
             .style(Style::default().fg(Color::White))
             .wrap(Wrap { trim: true })
@@ -130,6 +134,94 @@ impl Popup {
                     .border_style(Style::default().fg(YELLOW)),
             );
         ok_paragraph.render(layout[1], buf);
+    }
+    fn render_confirm_list_popup(
+        &self,
+        area: Rect,
+        buf: &mut ratatui::prelude::Buffer,
+        pixels: &[Pixel],
+    ) {
+        let popup_block = Block::default()
+            .borders(Borders::NONE)
+            .style(Style::default().bg(BG));
+        popup_block.render(area, buf);
+
+        let layout = Layout::default()
+            .direction(ratatui::layout::Direction::Vertical)
+            .constraints([
+                Constraint::Percentage(30), // Message area
+                Constraint::Percentage(40), // List area
+                Constraint::Percentage(30), // Buttons area
+            ])
+            .split(area);
+
+        // Question/message paragraph
+        let question_paragraph = Paragraph::new(self.message.clone())
+            .alignment(Alignment::Center)
+            .style(Style::default().fg(Color::White))
+            .wrap(Wrap { trim: true })
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_type(BorderType::Rounded)
+                    .border_style(Style::default().fg(YELLOW))
+                    .title(" Confirmation ")
+                    .title_style(Style::default().fg(YELLOW)),
+            );
+        question_paragraph.render(layout[0], buf);
+
+        // List area
+        let pixels: Vec<ListItem> = pixels
+            .iter()
+            .map(|pix| {
+                PixelToListWrapper {
+                    // DONT SHOW SIMPLE PIXELS
+                    pixel: pix,
+                    selected: true,
+                }
+                .into()
+            })
+            .collect();
+
+        let list_paragraph = List::new(pixels)
+            .style(Style::default().fg(Color::White))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_type(BorderType::Rounded)
+                    .border_style(Style::default().fg(Color::Cyan))
+                    .title(" Items ")
+                    .title_style(Style::default().fg(Color::Cyan)),
+            );
+        list_paragraph.render(layout[1], buf);
+
+        // Buttons
+        let button_layout = Layout::default()
+            .direction(ratatui::layout::Direction::Horizontal)
+            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+            .split(layout[2]);
+
+        let yes_paragraph = Paragraph::new("<y>es")
+            .alignment(Alignment::Center)
+            .style(Style::default().fg(GREEN))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_type(BorderType::Double)
+                    .border_style(Style::default().fg(GREEN)),
+            );
+        yes_paragraph.render(button_layout[0], buf);
+
+        let no_paragraph = Paragraph::new("<n>o")
+            .alignment(Alignment::Center)
+            .style(Style::default().fg(RED))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_type(BorderType::Double)
+                    .border_style(Style::default().fg(RED)),
+            );
+        no_paragraph.render(button_layout[1], buf);
     }
 }
 

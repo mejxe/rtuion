@@ -1,3 +1,5 @@
+use std::process::exit;
+
 use crate::pixela_client::PixelaClient;
 use crate::stats::{Pixel, Subject};
 use crate::ui::{BG, BLUE, GREEN, RED, YELLOW};
@@ -16,6 +18,10 @@ use ratatui::widgets::{Block, List};
 use ratatui::widgets::{BorderType, HighlightSpacing};
 use ratatui::widgets::{Borders, ListItem};
 use ratatui::widgets::{Paragraph, StatefulWidget};
+pub(crate) struct PixelToListWrapper<'a> {
+    pub(crate) pixel: &'a Pixel,
+    pub(crate) selected: bool,
+}
 const SELECTED_STYLE: Style = Style::new().bg(SLATE.c800).add_modifier(Modifier::BOLD);
 impl Widget for &mut PixelaClient {
     fn render(self, area: Rect, buf: &mut Buffer) {
@@ -94,11 +100,23 @@ impl PixelaClient {
                 self.pixels.state_mut().select(None);
             }
 
-            let list = List::new(self.pixels.iter().map(ListItem::from).collect::<Vec<_>>())
-                .block(block)
-                .highlight_style(SELECTED_STYLE)
-                .highlight_symbol(">")
-                .highlight_spacing(HighlightSpacing::Always);
+            let list = List::new(
+                self.pixels
+                    .iter()
+                    .enumerate()
+                    .map(|(index, pix)| {
+                        PixelToListWrapper {
+                            pixel: pix,
+                            selected: self.selected_to_send(index),
+                        }
+                        .into()
+                    })
+                    .collect::<Vec<ListItem>>(),
+            )
+            .block(block)
+            .highlight_style(SELECTED_STYLE)
+            .highlight_symbol(">")
+            .highlight_spacing(HighlightSpacing::Always);
             StatefulWidget::render(list, area, buf, self.pixels.state_mut());
         }
     }
@@ -216,18 +234,15 @@ impl PixelaClient {
         placeholder_text.render(inner_area, buf);
     }
 }
-impl Widget for Pixel {
-    fn render(self, area: Rect, buf: &mut Buffer)
-    where
-        Self: Sized,
-    {
-        let pixel_text = match self {
+impl From<PixelToListWrapper<'_>> for ListItem<'_> {
+    fn from(value: PixelToListWrapper) -> Self {
+        let pixel_text = match value.pixel {
             Pixel::Complex(complex) => {
                 format!(
                     "Date: {} | Subject: {} | Time: {}m",
                     complex.date().split('T').next().unwrap_or("N/A"),
                     complex.subject().graph_name(),
-                    complex.progress()
+                    complex.progress().minutes(complex.subject().unit())
                 )
             }
             Pixel::Simple(simple) => {
@@ -238,37 +253,17 @@ impl Widget for Pixel {
                 )
             }
         };
-        Paragraph::new(pixel_text)
-            .style(Style::default().fg(Color::White))
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .border_type(BorderType::Rounded)
-                    .border_style(Style::default().fg(YELLOW)),
-            )
-            .render(area, buf);
-    }
-}
-impl From<&Pixel> for ListItem<'_> {
-    fn from(value: &Pixel) -> Self {
-        let pixel_text = match value {
-            Pixel::Complex(complex) => {
-                format!(
-                    "Date: {} | Subject: {} | Time: {}m",
-                    complex.date().split('T').next().unwrap_or("N/A"),
-                    complex.subject().graph_name(),
-                    complex.progress()
-                )
-            }
-            Pixel::Simple(simple) => {
-                format!(
-                    "Date: {} | Time: {}m",
-                    simple.date().split('T').next().unwrap_or("N/A"),
-                    simple.progress()
-                )
-            }
+        let line = match value.selected {
+            _ if matches!(value.pixel, Pixel::Simple(_)) => Line::styled(
+                format!("   {}", pixel_text),
+                Style::default().fg(Color::Gray),
+            ),
+            true => Line::styled(format!(" ✓ {}", pixel_text), Style::default().fg(GREEN)),
+            false => Line::styled(
+                format!(" ☐ {}", pixel_text),
+                Style::default().fg(Color::White),
+            ),
         };
-        let line = Line::styled(pixel_text, Style::default().fg(Color::White));
         ListItem::new(line)
     }
 }

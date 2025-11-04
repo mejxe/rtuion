@@ -27,6 +27,10 @@ pub enum StatsError {
     StatsTrackingTurnedOff(),
     #[error("You have no subjects, make sure to sync")]
     SubjectsAreEmpty,
+    #[error("The sync has failed")]
+    SubjectsSyncFailed,
+    #[error("Cannot create a subject with these parameters")]
+    SubjectCreationFailed,
     #[error("Can't upload this pixel")]
     WrongPixelData,
 }
