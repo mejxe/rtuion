@@ -50,46 +50,6 @@ impl Widget for &mut App {
 
         tabs_widget.render(tab_layout[0], buf);
 
-        let popup_area = centered_rect(40, 30, area);
-        let popup_block = Block::default()
-            .borders(Borders::NONE)
-            .style(Style::default().bg(BG));
-        let popup_layout = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Percentage(50), Constraint::Percentage(30)])
-            .vertical_margin(0)
-            .split(popup_area);
-        let popup_yes_no_layout = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-            .horizontal_margin(0)
-            .split(popup_layout[1]);
-        let yes_paragraph = Paragraph::new("<y>es")
-            .alignment(Alignment::Center)
-            .centered()
-            .style(Style::default().fg(GREEN))
-            .block(
-                Block::default()
-                    .borders(Borders::all())
-                    .border_type(BorderType::Rounded),
-            );
-        let no_paragraph = Paragraph::new("<n>o")
-            .alignment(Alignment::Center)
-            .style(Style::default().fg(RED))
-            .block(
-                Block::default()
-                    .borders(Borders::all())
-                    .border_type(BorderType::Rounded),
-            );
-        let question_paragraph = Paragraph::new("This will reset your current timer!")
-            .alignment(Alignment::Center)
-            .style(Style::default().fg(Color::Gray))
-            .block(
-                Block::default()
-                    .borders(Borders::all())
-                    .border_type(BorderType::Rounded)
-                    .title("You sure?"),
-            );
         if let Some(popup) = self.popup() {
             popup.render(area, buf);
             return;

@@ -1,3 +1,4 @@
+use std::ops::Sub;
 use std::process::exit;
 
 use crate::pixela_client::PixelaClient;
@@ -18,10 +19,6 @@ use ratatui::widgets::{Block, List};
 use ratatui::widgets::{BorderType, HighlightSpacing};
 use ratatui::widgets::{Borders, ListItem};
 use ratatui::widgets::{Paragraph, StatefulWidget};
-pub(crate) struct PixelToListWrapper<'a> {
-    pub(crate) pixel: &'a Pixel,
-    pub(crate) selected: bool,
-}
 const SELECTED_STYLE: Style = Style::new().bg(SLATE.c800).add_modifier(Modifier::BOLD);
 impl Widget for &mut PixelaClient {
     fn render(self, area: Rect, buf: &mut Buffer) {
@@ -203,8 +200,14 @@ impl PixelaClient {
             let list = List::new(
                 self.subjects()
                     .iter()
-                    .map(ListItem::from)
-                    .collect::<Vec<_>>(),
+                    .map(|subject| {
+                        SubjectToListWrapper {
+                            subject,
+                            selected: self.get_current_subject().unwrap() == **subject,
+                        }
+                        .into()
+                    })
+                    .collect::<Vec<ListItem>>(),
             )
             .block(block)
             .highlight_style(SELECTED_STYLE)
@@ -216,7 +219,7 @@ impl PixelaClient {
 
     fn render_graph(&self, area: Rect, buf: &mut Buffer) {
         let block = Block::default()
-            .title(" Graph (WIP) ")
+            .title(" Graph ")
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
             .border_style(Style::default().fg(RED));
@@ -224,38 +227,46 @@ impl PixelaClient {
         let inner_area = block.inner(area);
         block.render(area, buf);
 
-        let placeholder_text = Paragraph::new("Graph visualization  wip...")
-            .alignment(Alignment::Center)
-            .style(
-                Style::default()
-                    .fg(Color::Gray)
-                    .add_modifier(Modifier::ITALIC),
-            );
-        placeholder_text.render(inner_area, buf);
+        if let Some(g) = self.current_graph() {
+            g.render(inner_area, buf);
+        } else {
+            let placeholder_text = Paragraph::new("Press G to render a graph.")
+                .alignment(Alignment::Center)
+                .style(
+                    Style::default()
+                        .fg(Color::Gray)
+                        .add_modifier(Modifier::ITALIC),
+                );
+            placeholder_text.render(inner_area, buf);
+        }
     }
+}
+pub(crate) struct PixelToListWrapper<'a> {
+    pub(crate) pixel: &'a Pixel,
+    pub(crate) selected: bool,
 }
 impl From<PixelToListWrapper<'_>> for ListItem<'_> {
     fn from(value: PixelToListWrapper) -> Self {
         let pixel_text = match value.pixel {
             Pixel::Complex(complex) => {
                 format!(
-                    "Date: {} | Subject: {} | Time: {}m",
-                    complex.date().split('T').next().unwrap_or("N/A"),
+                    " {} | {} | {}m",
                     complex.subject().graph_name(),
+                    complex.date().split('T').next().unwrap_or("N/A"),
                     complex.progress().minutes(complex.subject().unit())
                 )
             }
             Pixel::Simple(simple) => {
                 format!(
-                    "Date: {} | Time: {}m",
+                    " {} | {}m",
                     simple.date().split('T').next().unwrap_or("N/A"),
                     simple.progress()
                 )
             }
         };
         let line = match value.selected {
-            _ if matches!(value.pixel, Pixel::Simple(_)) => Line::styled(
-                format!("   {}", pixel_text),
+            false if matches!(value.pixel, Pixel::Simple(_)) => Line::styled(
+                format!("  {}", pixel_text),
                 Style::default().fg(Color::Gray),
             ),
             true => Line::styled(format!(" ✓ {}", pixel_text), Style::default().fg(GREEN)),
@@ -267,16 +278,21 @@ impl From<PixelToListWrapper<'_>> for ListItem<'_> {
         ListItem::new(line)
     }
 }
-impl From<&&Subject> for ListItem<'_> {
-    fn from(value: &&Subject) -> Self {
-        let subject_text = format!(
-            "Name: {} | Type: {} | Format: {}",
-            value.graph_name(),
-            value.data_type(),
-            value.unit()
-        );
+pub(crate) struct SubjectToListWrapper<'a> {
+    pub(crate) subject: &'a Subject,
+    pub(crate) selected: bool,
+}
+impl From<SubjectToListWrapper<'_>> for ListItem<'_> {
+    fn from(value: SubjectToListWrapper) -> Self {
+        let subject_text = value.subject.graph_name().to_string();
 
-        let line = Line::styled(subject_text, Style::default().fg(Color::White));
+        let line = match value.selected {
+            true => Line::styled(
+                format!("{} [Tracking]", subject_text),
+                Style::default().fg(GREEN),
+            ),
+            false => Line::styled(subject_text.to_string(), Style::default().fg(Color::White)),
+        };
         ListItem::new(line)
     }
 }

@@ -1,5 +1,6 @@
 pub mod app;
 pub mod error;
+pub mod graph;
 pub mod pixela_client;
 pub mod popup;
 pub mod romodoro;

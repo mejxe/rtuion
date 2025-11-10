@@ -32,6 +32,9 @@ impl Widget for &Popup {
             PopupKind::SendPixelsPopup(_, pixels) => {
                 self.render_confirm_list_popup(popup_area, buf, pixels);
             }
+            PopupKind::ListPopup(pixels) => {
+                self.render_list_popup(popup_area, buf, pixels);
+            }
         }
     }
 }
@@ -124,7 +127,7 @@ impl Popup {
             );
         error_paragraph.render(layout[0], buf);
 
-        let ok_paragraph = Paragraph::new("Press spacebar to continue")
+        let ok_paragraph = Paragraph::new("Press any key to continue")
             .alignment(Alignment::Center)
             .style(Style::default().fg(YELLOW))
             .block(
@@ -222,6 +225,70 @@ impl Popup {
                     .border_style(Style::default().fg(RED)),
             );
         no_paragraph.render(button_layout[1], buf);
+    }
+    fn render_list_popup(&self, area: Rect, buf: &mut ratatui::prelude::Buffer, pixels: &[Pixel]) {
+        let popup_block = Block::default()
+            .borders(Borders::NONE)
+            .style(Style::default().bg(BG));
+        popup_block.render(area, buf);
+
+        let layout = Layout::default()
+            .direction(ratatui::layout::Direction::Vertical)
+            .constraints([
+                Constraint::Percentage(30), // Message area
+                Constraint::Percentage(40), // List area
+                Constraint::Percentage(30), // Buttons area
+            ])
+            .split(area);
+
+        // Question/message paragraph
+        let question_paragraph = Paragraph::new(self.message.clone())
+            .alignment(Alignment::Center)
+            .style(Style::default().fg(Color::White))
+            .wrap(Wrap { trim: true })
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_type(BorderType::Rounded)
+                    .border_style(Style::default().fg(YELLOW))
+                    .title(" Confirmation ")
+                    .title_style(Style::default().fg(YELLOW)),
+            );
+        question_paragraph.render(layout[0], buf);
+
+        // List area
+        let pixels: Vec<ListItem> = pixels
+            .iter()
+            .map(|pix| {
+                PixelToListWrapper {
+                    pixel: pix,
+                    selected: true,
+                }
+                .into()
+            })
+            .collect();
+
+        let list_paragraph = List::new(pixels)
+            .style(Style::default().fg(Color::White))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_type(BorderType::Rounded)
+                    .border_style(Style::default().fg(YELLOW))
+                    .title(" Items ")
+                    .title_style(Style::default().fg(YELLOW)),
+            );
+        list_paragraph.render(layout[1], buf);
+        let ok_paragraph = Paragraph::new("Press any key to continue")
+            .alignment(Alignment::Center)
+            .style(Style::default().fg(YELLOW))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_type(BorderType::Rounded)
+                    .border_style(Style::default().fg(YELLOW)),
+            );
+        ok_paragraph.render(layout[2], buf);
     }
 }
 

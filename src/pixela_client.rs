@@ -2,6 +2,7 @@ use std::{fs, process::exit, time::Duration, u8, vec};
 
 use crate::{
     error::{Error, PixelaResponseError, Result, SettingsError, StatsError},
+    graph::Graph,
     stats::{ComplexPixel, SimplePixel},
 };
 use chrono::{DateTime, Local};
@@ -22,12 +23,15 @@ pub struct PixelaClient {
     pub logged_in: bool,
     focused_pane: u8, // 0:pixels; 1:user; 2:subjects
     pixels_to_send: Vec<usize>,
+    current_subject_index: usize,
+    current_graph: Option<Graph>,
 }
 impl PixelaClient {
-    pub fn new(user: PixelaUser) -> PixelaClient {
-        let pixels = StatefulList::new(PixelaClient::load_pixels(&user).unwrap_or_default());
+    pub fn try_new(user: PixelaUser) -> Result<PixelaClient> {
+        let pixel_res = PixelaClient::load_pixels(&user)?;
+        let pixels = StatefulList::new(pixel_res);
         let pixel_len = pixels.items.len();
-        PixelaClient {
+        Ok(PixelaClient {
             client: Client::new(),
             pixels,
             user,
@@ -35,7 +39,9 @@ impl PixelaClient {
             logged_in: false,
             focused_pane: 1,
             pixels_to_send: vec![0; 2 * pixel_len],
-        }
+            current_subject_index: 0,
+            current_graph: None,
+        })
     }
     pub fn add_pixel(
         &mut self,
@@ -47,7 +53,7 @@ impl PixelaClient {
             self.pixels.push(Pixel::Complex(ComplexPixel::new(
                 progress,
                 sub,
-                date.format("%Y/%m/%d").to_string(),
+                date.format("%Y/%m/%d %H:%M").to_string(),
             )));
         } else {
             self.pixels.push(Pixel::Simple(SimplePixel::new(
@@ -113,11 +119,11 @@ impl PixelaClient {
             )))
         }
     }
-    pub async fn send_pixels(&mut self) -> Result<()> {
+    pub async fn send_pixels(&mut self) -> Result<Vec<Pixel>> {
         let mut unresolved_pixels = Vec::<Pixel>::new();
         let mut resolved_pixels = Vec::<Pixel>::new();
 
-        let mut pixel_pool = self.take_selected_complex_pixels();
+        let mut pixel_pool = self.take_selected_pixels(true);
         while !pixel_pool.is_empty() {
             let pixels = std::mem::take(&mut pixel_pool);
             let futures = pixels.iter().filter_map(|pixel| match pixel {
@@ -156,11 +162,16 @@ impl PixelaClient {
         self.pixels_to_send = vec![0; len];
         self.pixels.items.append(&mut unresolved_pixels);
         self.save_pixels()?;
-        Ok(())
-        // TODO: RETURN RESOLVED PIXELS FOR SUMMARY !!! // OR A POPUP?
+        Ok(resolved_pixels)
     }
-    pub fn get_subject(&self, index: u8) -> Option<Subject> {
-        self.subjects.items.get(index as usize).cloned()
+    pub fn get_current_subject(&self) -> Option<Subject> {
+        self.subjects
+            .items
+            .get(self.current_subject_index())
+            .cloned()
+    }
+    pub fn get_subject(&self, index: usize) -> Option<Subject> {
+        self.subjects.items.get(index).cloned()
     }
     pub async fn log_in(&mut self) -> Result<()> {
         if !self.user.validate_not_empty() {
@@ -197,6 +208,16 @@ impl PixelaClient {
             }
         }
 
+        Ok(())
+    }
+    pub async fn request_graph(&mut self) -> Result<()> {
+        if let Some(subject_index) = self.subjects.state.selected() {
+            if let Some(subject) = self.get_subject(subject_index) {
+                self.set_current_graph(Some(
+                    Graph::download_graph(self.user.clone(), self.client.clone(), subject).await?,
+                ));
+            }
+        }
         Ok(())
     }
     async fn request_subjects(
@@ -346,26 +367,46 @@ impl PixelaClient {
             .filter_map(|index| self.pixels.items.get(*index).cloned())
             .collect()
     }
-    pub fn take_selected_complex_pixels(&mut self) -> Vec<Pixel> {
+    pub fn take_selected_pixels(&mut self, complex_only: bool) -> Vec<Pixel> {
         let pixels: Vec<usize> = self
             .pixels_to_send
             .iter()
             .enumerate()
-            .filter_map(
-                |(index, element)| {
-                    if *element == 1 {
-                        Some(index)
-                    } else {
-                        None
-                    }
-                },
-            )
+            .filter_map(|(index, element)| {
+                if complex_only && *element == 1 {
+                    Some(index)
+                } else if !complex_only && *element != 0 {
+                    Some(index)
+                } else {
+                    None
+                }
+            })
             .collect();
         pixels
             .into_iter()
             .rev()
             .map(|index| self.pixels.items.remove(index))
             .collect()
+    }
+
+    pub fn current_subject_index(&self) -> usize {
+        self.current_subject_index
+    }
+
+    pub fn set_current_subject_index(&mut self, current_subject_index: usize) {
+        self.current_subject_index = current_subject_index;
+    }
+
+    pub fn set_current_graph(&mut self, current_graph: Option<Graph>) {
+        self.current_graph = current_graph;
+    }
+
+    pub fn current_graph(&self) -> Option<&Graph> {
+        self.current_graph.as_ref()
+    }
+
+    pub fn current_graph_mut(&mut self) -> &mut Option<Graph> {
+        &mut self.current_graph
     }
 }
 #[derive(Debug)]

@@ -63,6 +63,8 @@ pub enum Error {
     TomlDeError(#[from] toml::de::Error),
     #[error("Toml Serialization Error: {0}")]
     TomlSerError(#[from] toml::ser::Error),
+    #[error("Async Error: {0}")]
+    AsyncError(String),
 }
 impl Error {
     pub fn handle_error_and_consume_data<T>(result: Result<T>) -> Option<Popup> {

@@ -9,16 +9,25 @@ pub struct Popup {
     pub kind: PopupKind,
     pub interactive: bool,
 }
-#[derive(Debug)]
-pub enum PopupKind {
-    YesNoPopup(fn(&mut App)),
-    SendPixelsPopup(fn(&mut App), Vec<Pixel>),
-    ErrorPopup(crate::error::Error),
-}
-impl PopupKind {
-    pub fn yes_no(callback: fn(&mut App)) -> PopupKind {
-        PopupKind::YesNoPopup(callback)
+type Callback = Box<dyn FnOnce(&mut App)>;
+
+impl std::fmt::Debug for PopupKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PopupKind::YesNoPopup(_) => write!(f, "YesNoPopup(<callback>)"),
+            PopupKind::SendPixelsPopup(_, pixels) => {
+                write!(f, "SendPixelsPopup(<callback>, {:?})", pixels)
+            }
+            PopupKind::ListPopup(pixels) => write!(f, "ListPopup({:?})", pixels),
+            PopupKind::ErrorPopup(e) => write!(f, "ErrorPopup({:?})", e),
+        }
     }
+}
+pub enum PopupKind {
+    YesNoPopup(Callback),
+    SendPixelsPopup(Callback, Vec<Pixel>),
+    ListPopup(Vec<Pixel>),
+    ErrorPopup(crate::error::Error),
 }
 impl Popup {
     pub fn new(message: String, kind: PopupKind) -> Self {
@@ -26,6 +35,7 @@ impl Popup {
             PopupKind::YesNoPopup(_) => true,
             PopupKind::ErrorPopup(_) => false,
             PopupKind::SendPixelsPopup(_, _) => true,
+            PopupKind::ListPopup(_) => false,
         };
         Self {
             message,
@@ -33,18 +43,25 @@ impl Popup {
             interactive,
         }
     }
-    pub fn yes_no(message: String, callback: fn(&mut App)) -> Self {
+    pub fn yes_no(message: String, callback: Callback) -> Self {
         Self {
             message,
             kind: PopupKind::YesNoPopup(callback),
             interactive: true,
         }
     }
-    pub fn pixel_list(message: String, callback: fn(&mut App), pixels: Vec<Pixel>) -> Self {
+    pub fn pixel_confirm_list(message: String, callback: Callback, pixels: Vec<Pixel>) -> Self {
         Self {
             message,
             kind: PopupKind::SendPixelsPopup(callback, pixels),
             interactive: true,
+        }
+    }
+    pub fn pixel_list(message: String, pixels: Vec<Pixel>) -> Self {
+        Self {
+            message,
+            kind: PopupKind::ListPopup(pixels),
+            interactive: false,
         }
     }
 }

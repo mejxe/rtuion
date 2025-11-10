@@ -1,4 +1,5 @@
 use crate::error::Error;
+use crate::pixela_client::PixelaClient;
 use crate::popup::{Popup, PopupKind};
 use crate::romodoro::Pomodoro;
 use crate::settings::*;
@@ -20,7 +21,7 @@ pub struct App {
     pomodoro: Pomodoro,
     selected_tab: u8,
     settings: Rc<RefCell<SettingsTab>>,
-    popup: Option<Popup>,
+    popup: Option<Popup>, // TODO: popup queue maybe so they don't overwrite each other?
     #[derivative(Debug = "ignore")]
     clipboard: Option<Clipboard>,
     event_tx: tokio::sync::mpsc::Sender<Event>,
@@ -29,8 +30,10 @@ pub enum Event {
     TimerTick(i64),
     KeyPress(KeyEvent),
     TerminalEvent,
-    OverwriteTimer,
+    OverwriteTimerSettings,
+    OverwriteTimerForSubject(usize),
     SendPixels,
+    DeletePixel,
 }
 impl App {
     pub fn new(
@@ -84,14 +87,30 @@ impl App {
                         self.handle_key_event(key).await;
                     }
                     Event::TimerTick(time) => {
-                        self.pomodoro.handle_timer_responses(time).await;
+                        if let Err(e) = self.pomodoro.handle_timer_responses(time).await {
+                            self.set_popup(e.into());
+                        };
                     }
                     Event::TerminalEvent => {}
-                    Event::OverwriteTimer => self.overwrite_timer().await,
+                    Event::OverwriteTimerSettings => self.overwrite_timer_settings().await,
+                    Event::OverwriteTimerForSubject(index) => {
+                        self.overwrite_timer_for_subject(index).await
+                    }
                     Event::SendPixels => {
                         if let Some(pixela) = self.get_pomodoro_ref_mut().pixela_client_as_mut() {
-                            if let Err(err) = pixela.send_pixels().await {
-                                self.set_popup(err.into());
+                            match pixela.send_pixels().await {
+                                Ok(pixels) => self.set_popup(Popup::pixel_list(
+                                    "Sucessfuly sent these pixels".into(),
+                                    pixels,
+                                )),
+                                Err(e) => self.set_popup(e.into()),
+                            }
+                        }
+                    }
+                    Event::DeletePixel => {
+                        if let Some(pixela_client) = self.pomodoro.pixela_client_as_mut() {
+                            if let Err(e) = pixela_client.delete_pixel() {
+                                self.set_popup(e.into());
                             }
                         }
                     }
@@ -116,7 +135,7 @@ impl App {
             _ => {}
         }
         // popup
-        if let Some(popup) = &self.popup {
+        if let Some(popup) = self.popup.take() {
             match popup.kind {
                 PopupKind::YesNoPopup(callback) | PopupKind::SendPixelsPopup(callback, _) => {
                     match key_event.code {
@@ -128,7 +147,7 @@ impl App {
                         _ => {}
                     }
                 }
-                PopupKind::ErrorPopup(_) => self.clear_popup(),
+                PopupKind::ErrorPopup(_) | PopupKind::ListPopup(_) => self.clear_popup(),
             }
             return;
         };
@@ -184,22 +203,34 @@ impl App {
                         KeyCode::Down | KeyCode::Char('j') => pixela_client.select_next(),
                         KeyCode::Up | KeyCode::Char('k') => pixela_client.select_previous(),
                         KeyCode::Char(' ') if pixela_client.focused_pane() == 2 => {
-                            let index = pixela_client
-                                .subjects
-                                .state()
-                                .selected()
-                                .unwrap_or(0)
-                                .try_into()
-                                .unwrap();
-                            let _ = pixela_client;
-                            self.pomodoro.set_current_subject_index(index);
+                            if let Some(index) = pixela_client.subjects.state().selected() {
+                                if !self.pomodoro.is_duration_saved() {
+                                    self.set_popup(Popup::yes_no(
+                                        "Your current progress will be reset".into(),
+                                        Box::new(move |app: &mut App| {
+                                            app.ask_overwrite_subject(index);
+                                        }),
+                                    ));
+                                } else {
+                                    self.pomodoro.set_current_subject_index(index);
+                                }
+                            }
+                        }
+                        KeyCode::Char('G') => {
+                            if let Some(client) = self.get_pomodoro_ref_mut().pixela_client_as_mut()
+                            {
+                                if let Err(e) = client.request_graph().await {
+                                    self.set_popup(e.into());
+                                }
+                            }
                         }
                         KeyCode::Char(' ') if pixela_client.focused_pane() == 0 => {
-                            let index = pixela_client.pixels.state().selected().unwrap_or(0);
-                            if pixela_client.selected_to_send(index) {
-                                pixela_client.unselect_pixel(index);
-                            } else {
-                                pixela_client.select_pixel(index);
+                            if let Some(index) = pixela_client.pixels.state().selected() {
+                                if pixela_client.selected_to_send(index) {
+                                    pixela_client.unselect_pixel(index);
+                                } else {
+                                    pixela_client.select_pixel(index);
+                                }
                             }
                         }
                         KeyCode::Char('p') if pixela_client.focused_pane() == 0 => {
@@ -212,17 +243,18 @@ impl App {
                         {
                             if let Some(pixels) = self.pomodoro.pixela_client() {
                                 let pixels = pixels.get_selected_pixels();
-                                self.set_popup(Popup::pixel_list(
+                                self.set_popup(Popup::pixel_confirm_list(
                                     "These pixels will be sent".into(),
-                                    App::ask_send_pixels,
+                                    Box::new(App::ask_send_pixels),
                                     pixels,
                                 ));
                             }
                         }
                         KeyCode::Char('d') if pixela_client.focused_pane() == 0 => {
-                            if let Err(e) = pixela_client.delete_pixel() {
-                                self.set_popup(e.into());
-                            }
+                            self.set_popup(Popup::yes_no(
+                                "This pixel will be deleted, you sure?".into(),
+                                Box::new(App::ask_delete_pixel),
+                            ));
                         }
                         _ => {}
                     };
@@ -261,16 +293,26 @@ impl App {
         }
     }
     fn ask_overwrite_timer(&mut self) {
-        let _ = self.event_tx.try_send(Event::OverwriteTimer);
+        let _ = self.event_tx.try_send(Event::OverwriteTimerSettings);
     }
     fn ask_send_pixels(&mut self) {
         let _ = self.event_tx.try_send(Event::SendPixels);
+    }
+    fn ask_delete_pixel(&mut self) {
+        if self.pomodoro.pixela_client_as_mut().is_some() {
+            let _ = self.event_tx.try_send(Event::DeletePixel);
+        }
+    }
+    fn ask_overwrite_subject(&mut self, index: usize) {
+        let _ = self
+            .event_tx
+            .try_send(Event::OverwriteTimerForSubject(index));
     }
     async fn update_settings(&mut self) {
         if self.pomodoro.timer.get_running() {
             self.set_popup(Popup::yes_no(
                 "This will overwrite current progress".into(),
-                App::ask_overwrite_timer,
+                Box::new(App::ask_overwrite_timer),
             ));
             return;
         }
@@ -300,12 +342,18 @@ impl App {
             self.pomodoro.set_setting(iterations).await;
         }
         // save settings and overwrite existing pixela_client
-        self.settings.borrow().save_to_file().unwrap(); // TODO: DANGER!!
-        Error::handle_error_and_consume_data(self.pomodoro.try_init_pixela_client());
+        let mut popup = Error::handle_error_and_consume_data(self.settings.borrow().save_to_file());
+        self.set_popup_opt(popup);
+        popup = Error::handle_error_and_consume_data(self.pomodoro.try_init_pixela_client());
+        self.set_popup_opt(popup);
     }
-    pub async fn overwrite_timer(&mut self) {
+    pub async fn overwrite_timer_settings(&mut self) {
         self.pomodoro.timer.stop().await;
         self.update_settings().await;
+    }
+    async fn overwrite_timer_for_subject(&mut self, index: usize) {
+        self.pomodoro.timer.restart().await;
+        self.pomodoro.set_current_subject_index(index);
     }
 
     pub fn get_selected_tab(&self) -> u8 {
