@@ -1,4 +1,5 @@
 use crate::error::Error;
+use crate::graph::Graph;
 use crate::pixela_client::PixelaClient;
 use crate::popup::{Popup, PopupKind};
 use crate::romodoro::Pomodoro;
@@ -34,6 +35,8 @@ pub enum Event {
     OverwriteTimerForSubject(usize),
     SendPixels,
     DeletePixel,
+    RequestGraph,
+    GraphReceived(Result<Graph, Error>),
 }
 impl App {
     pub fn new(
@@ -111,6 +114,35 @@ impl App {
                         if let Some(pixela_client) = self.pomodoro.pixela_client_as_mut() {
                             if let Err(e) = pixela_client.delete_pixel() {
                                 self.set_popup(e.into());
+                            }
+                        }
+                    }
+                    Event::RequestGraph => {
+                        if let Some(client) = self.pomodoro.pixela_client_as_mut() {
+                            if let Some(index) = client.subjects.state().selected() {
+                                let user = client.user.clone();
+                                let rq_client = client.client.clone();
+                                let tx_clone = self.event_tx.clone();
+                                let subject = client.get_subject(index).unwrap();
+
+                                tokio::spawn(async move {
+                                    let result =
+                                        Graph::download_graph(user, rq_client, subject).await;
+
+                                    if let Err(e) =
+                                        tx_clone.send(Event::GraphReceived(result)).await
+                                    {
+                                        eprintln!("Failed to send GraphDataReceived event: {}", e);
+                                    }
+                                });
+                            }
+                        }
+                    }
+                    Event::GraphReceived(res) => {
+                        if let Some(client) = self.pomodoro.pixela_client_as_mut() {
+                            match res {
+                                Ok(g) => client.set_current_graph(Some(g)),
+                                Err(e) => self.set_popup(e.into()),
                             }
                         }
                     }
@@ -217,12 +249,7 @@ impl App {
                             }
                         }
                         KeyCode::Char('G') => {
-                            if let Some(client) = self.get_pomodoro_ref_mut().pixela_client_as_mut()
-                            {
-                                if let Err(e) = client.request_graph().await {
-                                    self.set_popup(e.into());
-                                }
-                            }
+                            let _ = self.event_tx.send(Event::RequestGraph).await;
                         }
                         KeyCode::Char(' ') if pixela_client.focused_pane() == 0 => {
                             if let Some(index) = pixela_client.pixels.state().selected() {
