@@ -422,17 +422,3 @@ impl App {
         self.popup = popup;
     }
 }
-
-#[cfg(test)]
-mod test {
-    use super::*;
-
-    //  #[test]
-    //   #[ignore]
-    //   fn multithread_works() {
-    //       let (tx, rx) = tokio::sync::mpsc::channel(4);
-    //       let mut app = App::new(Timer::new(PomodoroState::Work(2), PomodoroState::Break(1), 2), rx, tx);
-    //       app.start_timer();
-
-    //   }
-} //
