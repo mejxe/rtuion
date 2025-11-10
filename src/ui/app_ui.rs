@@ -1,8 +1,4 @@
-use super::{ui_utils::*, BG, BLUE, GREEN, RED, YELLOW};
-use crate::pixela_client::PixelaClient;
-use crate::romodoro::Pomodoro;
-use crate::settings::SettingsTab;
-use crate::stats::{Pixel, Subject};
+use super::YELLOW;
 use crate::{app::App, settings::Mode};
 use ratatui::{
     self,
@@ -10,7 +6,7 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style, Stylize},
     text::Span,
-    widgets::{Block, BorderType, Borders, Clear, Gauge, Paragraph, Tabs, Widget},
+    widgets::{Block, BorderType, Borders, Paragraph, Tabs, Widget},
     Frame,
 };
 

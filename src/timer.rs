@@ -1,5 +1,5 @@
 use crate::{
-    settings::{self, *},
+    settings::{*},
     DEFAULT_BREAK, DEFAULT_ITERATIONS, DEFAULT_WORK,
 };
 use std::{cell::RefCell, fmt::Display, rc::Rc, time::Duration};

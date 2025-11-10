@@ -1,14 +1,11 @@
-use std::process::exit;
 
 use ratatui::{
-    layout::Constraint,
     style::{Style, Stylize},
-    symbols,
     text::Line,
-    widgets::{Axis, Bar, BarChart, BarGroup, Block, Chart, Dataset, GraphType, Widget},
+    widgets::{Bar, BarChart, BarGroup, Block, Widget},
 };
 
-use crate::graph::{DataPoint, Graph};
+use crate::graph::Graph;
 
 impl Widget for &Graph {
     fn render(self, area: ratatui::prelude::Rect, buf: &mut ratatui::prelude::Buffer)

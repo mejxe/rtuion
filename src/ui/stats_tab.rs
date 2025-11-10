@@ -1,5 +1,3 @@
-use std::ops::Sub;
-use std::process::exit;
 
 use crate::pixela_client::PixelaClient;
 use crate::stats::{Pixel, Subject};

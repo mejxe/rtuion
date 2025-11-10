@@ -1,7 +1,5 @@
-use futures::stream::Any;
-use ratatui::widgets::{List, ListState};
 
-use crate::{app::App, pixela_client::StatefulList, stats::Pixel};
+use crate::{app::App, stats::Pixel};
 
 #[derive(Debug)]
 pub struct Popup {

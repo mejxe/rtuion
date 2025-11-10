@@ -1,4 +1,4 @@
-use std::{fs, process::exit, time::Duration, u8, vec};
+use std::{fs, time::Duration, u8, vec};
 
 use crate::{
     error::{Error, PixelaResponseError, Result, SettingsError, StatsError},
@@ -6,7 +6,7 @@ use crate::{
     stats::{ComplexPixel, SimplePixel},
 };
 use chrono::{DateTime, Local};
-use directories::{ProjectDirs, UserDirs};
+use directories::ProjectDirs;
 use futures::{stream, StreamExt};
 use ratatui::widgets::ListState;
 use reqwest::Client;

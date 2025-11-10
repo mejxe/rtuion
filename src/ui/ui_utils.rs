@@ -1,7 +1,6 @@
 use ratatui::{
-    layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style, Stylize},
-    widgets::{Block, BorderType, Borders, Paragraph},
+    layout::{Constraint, Direction, Layout, Rect},
+    style::{Modifier, Style, Stylize},
 };
 
 use crate::settings::SettingsTab;

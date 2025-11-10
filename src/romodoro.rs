@@ -1,15 +1,14 @@
 use std::{cell::RefCell, rc::Rc};
 
-use chrono::{DateTime, Local};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
     app::Event,
-    error::{Error, Result, StatsError},
-    pixela_client::{self, PixelaClient},
-    settings::{self, PomodoroSettings, SettingsTab},
+    error::{Result, StatsError},
+    pixela_client::{PixelaClient},
+    settings::{PomodoroSettings, SettingsTab},
     stats::{PixelaUser, Subject},
-    timer::{self, *},
+    timer::{*},
 };
 
 #[derive(Debug)]

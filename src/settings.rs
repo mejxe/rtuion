@@ -1,8 +1,6 @@
-use std::process::exit;
-use std::{fs, io};
+use std::fs;
 
 use crate::error::{Result, SettingsError};
-use crate::stats::Subject;
 use crate::{
     timer::*, BREAK_TIME_INCR, DEFAULT_BREAK, DEFAULT_ITERATIONS, DEFAULT_WORK, WORK_TIME_INCR,
 };

@@ -1,7 +1,7 @@
-use core::{f64, panic};
-use std::{collections::HashMap, fs, hash::Hash, process::exit, u64};
+use core::f64;
+use std::{collections::HashMap, fs};
 
-use chrono::{Duration, Local, NaiveDate, TimeDelta};
+use chrono::{Duration, NaiveDate};
 use directories::ProjectDirs;
 use ratatui::{style::Style, widgets::Bar};
 use reqwest::Client;

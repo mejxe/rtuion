@@ -1,6 +1,5 @@
 use crate::settings::SettingsTab;
-use crate::stats::Pixel;
-use crate::ui::{BG, BLUE, GREEN, RED, YELLOW};
+use crate::ui::{BG, BLUE, RED, YELLOW};
 use ratatui::buffer::Buffer;
 use ratatui::layout::Constraint;
 use ratatui::layout::Direction;

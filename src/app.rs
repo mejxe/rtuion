@@ -1,6 +1,5 @@
 use crate::error::Error;
 use crate::graph::Graph;
-use crate::pixela_client::PixelaClient;
 use crate::popup::{Popup, PopupKind};
 use crate::romodoro::Pomodoro;
 use crate::settings::*;
@@ -11,7 +10,6 @@ use derivative::Derivative;
 use ratatui::DefaultTerminal;
 use std::cell::RefCell;
 use std::io;
-use std::process::exit;
 use std::rc::Rc;
 use tokio_util::sync::CancellationToken;
 

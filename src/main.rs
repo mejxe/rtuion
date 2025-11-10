@@ -2,11 +2,11 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crossterm::terminal;
+use pomodoro::app::*;
 use pomodoro::error::Result;
 use pomodoro::popup::Popup;
 use pomodoro::romodoro::*;
 use pomodoro::settings::SettingsTab;
-use pomodoro::{app::*, settings};
 // ALPHA 0.1
 
 #[tokio::main]

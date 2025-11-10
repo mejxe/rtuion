@@ -1,12 +1,10 @@
 use ratatui::{
     layout::{Alignment, Constraint, Flex, Layout, Rect},
     style::{Color, Style, Stylize},
-    text::Text,
     widgets::{Block, BorderType, Borders, Clear, List, ListItem, Paragraph, Widget, Wrap},
 };
 
 use crate::{
-    app::App,
     popup::{Popup, PopupKind},
     stats::Pixel,
 };
