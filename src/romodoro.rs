@@ -5,10 +5,10 @@ use tokio_util::sync::CancellationToken;
 use crate::{
     app::Event,
     error::{Result, StatsError},
-    pixela_client::{PixelaClient},
+    pixela_client::PixelaClient,
     settings::{PomodoroSettings, SettingsTab},
-    stats::{PixelaUser, Subject},
-    timer::{*},
+    stats::{self, PixelaUser, Subject},
+    timer::*,
 };
 
 #[derive(Debug)]
@@ -152,16 +152,31 @@ impl Pomodoro {
         }
     }
     pub async fn handle_timer_responses(&mut self, time: i64) -> Result<()> {
+        self.handle_logging(time)?;
         if time == -1 && self.timer.get_iteration() < self.timer.get_total_iterations() {
-            if let PomodoroState::Work(_) = self.timer.get_current_state() {
-                self.log_pixel_from_duration()?;
-            }
             self.timer.next_iteration().await;
         } else if time == -1 && self.timer.get_iteration() >= self.timer.get_total_iterations() {
             self.timer.stop().await;
-            self.log_pixel_from_duration()?;
+            self.timer.finish().await;
         } else {
             self.set_time_left(time);
+        }
+        Ok(())
+    }
+    fn handle_logging(&mut self, time: i64) -> Result<()> {
+        let increment: i64;
+        let current_state = self.timer.get_current_state();
+        if let Some(sub) = self.get_current_subject() {
+            //increment = (sub.get_min_increment()*10) as i64;
+            increment = 10;
+        } else {
+            increment = (stats::HOUR_INCREMENT * 10) as i64;
+        }
+
+        if let PomodoroState::Work(_) = current_state {
+            if time % increment == 0 {
+                self.log_pixel_from_duration()?
+            }
         }
         Ok(())
     }
@@ -177,7 +192,6 @@ impl Pomodoro {
     }
 
     pub fn set_current_subject_index(&mut self, current_subject_index: usize) {
-        // TODO: MAKE SO SELECTING A DIFFERENT SUBJECT RESETS THE TIMER (NOTIFICATIONS!)
         if let Some(client) = &mut self.pixela_client {
             client.set_current_subject_index(current_subject_index);
         }

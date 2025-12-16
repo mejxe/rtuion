@@ -46,7 +46,7 @@ impl Widget for &mut App {
 
         tabs_widget.render(tab_layout[0], buf);
 
-        if let Some(popup) = self.popup() {
+        if let Some(popup) = self.popup_as_mut() {
             popup.render(area, buf);
             return;
         }

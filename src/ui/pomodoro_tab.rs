@@ -160,7 +160,9 @@ impl Pomodoro {
             None => "No subjects".into(),
         };
         let style = match &subject {
-            Some(_) if self.timer.get_timer_started() => Style::default().fg(Color::Gray),
+            Some(sub) if self.timer.get_timer_started() | sub.is_dummy() => {
+                Style::default().fg(Color::Gray)
+            }
             Some(_) => Style::default().fg(YELLOW),
             None => Style::default().fg(Color::Gray),
         };

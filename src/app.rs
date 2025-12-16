@@ -3,13 +3,16 @@ use crate::graph::Graph;
 use crate::popup::{Popup, PopupKind};
 use crate::romodoro::Pomodoro;
 use crate::settings::*;
+use crate::ui::popup::{list_height, popup_area};
 use arboard::Clipboard;
 use core::panic;
 use crossterm::event::{self, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use derivative::Derivative;
+use ratatui::layout::Rect;
 use ratatui::DefaultTerminal;
 use std::cell::RefCell;
 use std::io;
+use std::process::exit;
 use std::rc::Rc;
 use tokio_util::sync::CancellationToken;
 
@@ -21,6 +24,7 @@ pub struct App {
     selected_tab: u8,
     settings: Rc<RefCell<SettingsTab>>,
     popup: Option<Popup>, // TODO: popup queue maybe so they don't overwrite each other?
+    popup_size: Rect,
     #[derivative(Debug = "ignore")]
     clipboard: Option<Clipboard>,
     event_tx: tokio::sync::mpsc::Sender<Event>,
@@ -34,6 +38,7 @@ pub enum Event {
     SendPixels,
     DeletePixel,
     RequestGraph,
+    RestartTimer,
     GraphReceived(Result<Graph, Error>),
 }
 impl App {
@@ -50,6 +55,7 @@ impl App {
             popup: None,
             clipboard: Clipboard::new().ok(),
             event_tx,
+            popup_size: Rect::default(),
         }
     }
     pub async fn run(
@@ -81,6 +87,7 @@ impl App {
         self.pomodoro.create_countdown(timer_cancel).await;
 
         terminal.draw(|frame| self.draw(frame))?;
+        self.popup_size = popup_area(terminal.get_frame().area(), 50, 35);
         while !self.exit {
             if let Some(event) = rx.recv().await {
                 match event {
@@ -144,9 +151,13 @@ impl App {
                             }
                         }
                     }
+                    Event::RestartTimer => {
+                        self.pomodoro.timer.restart().await;
+                    }
                 }
             }
             terminal.draw(|frame| self.draw(frame))?;
+            self.popup_size = popup_area(terminal.get_frame().area(), 50, 35);
         }
         cancelation_token.cancel();
         timer_task.await?;
@@ -164,10 +175,27 @@ impl App {
             }
             _ => {}
         }
+        // popup scrolling
+        let list_height = list_height(&self.popup_size);
+        if let Some(popup) = self.popup_as_mut() {
+            if popup.scrollable {
+                match key_event.code {
+                    KeyCode::Down | KeyCode::Char('j') => {
+                        popup.scroll_down(list_height);
+                        return;
+                    }
+                    KeyCode::Up | KeyCode::Char('k') => {
+                        popup.scroll_up(list_height);
+                        return;
+                    }
+                    _ => {}
+                }
+            }
+        }
         // popup
         if let Some(popup) = self.popup.take() {
             match popup.kind {
-                PopupKind::YesNoPopup(callback) | PopupKind::SendPixelsPopup(callback, _) => {
+                PopupKind::YesNoPopup(callback) | PopupKind::SendPixelsPopup(callback, _, _) => {
                     match key_event.code {
                         KeyCode::Char('y') => {
                             callback(self);
@@ -177,7 +205,7 @@ impl App {
                         _ => {}
                     }
                 }
-                PopupKind::ErrorPopup(_) | PopupKind::ListPopup(_) => self.clear_popup(),
+                PopupKind::ErrorPopup(_) | PopupKind::ListPopup(_, _) => self.clear_popup(),
             }
             return;
         };
@@ -196,9 +224,17 @@ impl App {
                 key => {
                     if key == KeyCode::Char('v') && key_event.modifiers == KeyModifiers::CONTROL {
                         if let Some(clip) = self.clipboard.as_mut() {
-                            self.settings
-                                .borrow_mut()
-                                .input(key_event, Some(clip.get_text().unwrap()));
+                            self.settings.borrow_mut().input(
+                                key_event,
+                                Some(
+                                    clip.get_text()
+                                        .unwrap()
+                                        .split_whitespace()
+                                        .next()
+                                        .unwrap()
+                                        .to_string(),
+                                ),
+                            );
                         }
                     } else {
                         self.settings.borrow_mut().input(key_event, None);
@@ -211,7 +247,13 @@ impl App {
                 KeyCode::Right | KeyCode::Char('l') => self.settings.borrow_mut().increment(),
                 KeyCode::Left | KeyCode::Char('h') => self.settings.borrow_mut().decrement(),
                 KeyCode::Char(' ') => self.update_settings().await,
-                KeyCode::Char('r') => self.settings.borrow_mut().restore_defaults(),
+                KeyCode::Char('r') => {
+                    self.set_popup(Popup::yes_no(
+                        "Do you want to reset your timer?".to_string(),
+                        Box::new(App::ask_restart_timer),
+                    ));
+                }
+                KeyCode::Char('R') => self.settings.borrow_mut().restore_defaults(),
                 KeyCode::Enter if [4, 5].contains(&self.settings.borrow().selected_setting) => {
                     self.settings.borrow_mut().change_mode(Mode::Input)
                 }
@@ -236,13 +278,21 @@ impl App {
                             if let Some(index) = pixela_client.subjects.state().selected() {
                                 if !self.pomodoro.is_duration_saved() {
                                     self.set_popup(Popup::yes_no(
-                                        "Your current progress will be reset".into(),
+                                        "Your current progress & time settings will be reset"
+                                            .into(),
                                         Box::new(move |app: &mut App| {
                                             app.ask_overwrite_subject(index);
                                         }),
                                     ));
                                 } else {
                                     self.pomodoro.set_current_subject_index(index);
+                                }
+                                if let Some(subject) = self.pomodoro.get_current_subject() {
+                                    let time = (subject.get_min_increment() * 60) as i64;
+                                    self.pomodoro
+                                        .set_setting(PomodoroSettings::WorkTime(time))
+                                        .await;
+                                    self.settings.borrow_mut().timer_settings.work_time = time;
                                 }
                             }
                         }
@@ -333,47 +383,62 @@ impl App {
             .event_tx
             .try_send(Event::OverwriteTimerForSubject(index));
     }
+    fn ask_restart_timer(&mut self) {
+        let _ = self.event_tx.try_send(Event::RestartTimer);
+    }
     async fn update_settings(&mut self) {
-        if self.pomodoro.timer.get_running() {
+        if self.pomodoro.timer.get_timer_started() {
             self.set_popup(Popup::yes_no(
                 "This will overwrite current progress".into(),
                 Box::new(App::ask_overwrite_timer),
             ));
             return;
         }
-        let break_time = self
-            .settings
-            .borrow()
-            .get_pomodoro_setting(PomodoroSettings::BreakTime(None));
-        let work_time = self
-            .settings
-            .borrow()
-            .get_pomodoro_setting(PomodoroSettings::WorkTime(None));
-        let iterations = self
-            .settings
-            .borrow()
-            .get_pomodoro_setting(PomodoroSettings::Iterations(None));
-        let current_break_time: PomodoroSettings = self.pomodoro.timer.get_break_state().into();
-        let current_work_time: PomodoroSettings = self.pomodoro.timer.get_work_state().into();
-        let current_iterations: PomodoroSettings =
-            PomodoroSettings::Iterations(Some(self.pomodoro.timer.get_total_iterations()));
-        if current_break_time != break_time {
-            self.pomodoro.set_setting(break_time).await;
+        let break_time = self.settings.borrow().get_break_time();
+        let work_time = self.settings.borrow().get_work_time();
+        let iterations = self.settings.borrow().get_iterations();
+        if let Some(pixela) = self.pomodoro.pixela_client() {
+            if let Some(subject) = pixela.get_current_subject() {
+                let min_incr = subject.get_min_increment();
+                if work_time < min_incr * 60 {
+                    let err: Error = crate::error::SettingsError::WrongSetting(
+                        format!("Your work time cannot be smaller than selected subjects smallest increment: {min_incr}")).into();
+                    self.set_popup(Popup::from(err));
+                    return;
+                }
+            }
         }
-        if current_work_time != work_time {
-            self.pomodoro.set_setting(work_time).await;
-        }
-        if current_iterations != iterations {
-            self.pomodoro.set_setting(iterations).await;
-        }
+        self.pomodoro
+            .set_setting(PomodoroSettings::BreakTime(break_time as i64))
+            .await;
+        self.pomodoro
+            .set_setting(PomodoroSettings::WorkTime(work_time as i64))
+            .await;
+        self.pomodoro
+            .set_setting(PomodoroSettings::Iterations(iterations as u8))
+            .await;
+
         // save settings and overwrite existing pixela_client
         let mut popup = Error::handle_error_and_consume_data(self.settings.borrow().save_to_file());
         self.set_popup_opt(popup);
-        popup = Error::handle_error_and_consume_data(self.pomodoro.try_init_pixela_client());
-        self.set_popup_opt(popup);
+        if let Some(pixela_client) = self.pomodoro.pixela_client() {
+            let client_username = pixela_client.user.username();
+            let client_token = pixela_client.user.token();
+            if self.check_pixela_changed(client_username, client_token) {
+                popup =
+                    Error::handle_error_and_consume_data(self.pomodoro.try_init_pixela_client());
+                self.set_popup_opt(popup);
+            }
+        }
+    }
+    fn check_pixela_changed(&self, client_username: &str, client_token: &str) -> bool {
+        let settings = &self.settings.borrow().stats_setting;
+        let settings_username = settings.pixela_username.as_ref().expect("");
+        let settings_token = settings.pixela_token.as_ref().expect("");
+        client_token != settings_token || client_username != settings_username
     }
     pub async fn overwrite_timer_settings(&mut self) {
-        self.pomodoro.timer.stop().await;
+        self.pomodoro.timer.restart().await;
         self.update_settings().await;
     }
     async fn overwrite_timer_for_subject(&mut self, index: usize) {
@@ -408,6 +473,9 @@ impl App {
 
     pub fn popup(&self) -> Option<&Popup> {
         self.popup.as_ref()
+    }
+    pub fn popup_as_mut(&mut self) -> Option<&mut Popup> {
+        self.popup.as_mut()
     }
     pub fn clear_popup(&mut self) {
         self.popup = None;

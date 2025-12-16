@@ -1,6 +1,12 @@
-use std::io;
+use std::{
+    fmt::{write, Display},
+    io,
+};
 
-use crate::popup::Popup;
+use crate::{
+    popup::Popup,
+    stats::{ComplexPixel, Pixel},
+};
 
 #[derive(thiserror::Error, Debug)]
 pub enum SettingsError {
@@ -13,11 +19,17 @@ pub enum SettingsError {
     #[error("There was an error with loading your data: {0}")]
     LoadError(String),
 
+    #[error("Saved pixels not found, loading the defaults")]
+    NoData(),
+
     #[error("Couldn't locate a suitable directory to keep your config in.")]
     HomeDirNotFound,
 
     #[error("Error with filesystem: {0}")]
     IO(#[from] io::Error),
+
+    #[error("Incorrect setting value: {0}")]
+    WrongSetting(String),
 }
 #[derive(thiserror::Error, Debug)]
 pub enum StatsError {
@@ -33,6 +45,8 @@ pub enum StatsError {
     SubjectCreationFailed,
     #[error("Can't upload this pixel")]
     WrongPixelData,
+    #[error("Your graph cannot store progress this small")]
+    QuantityIsNotBigEnough,
 }
 #[derive(thiserror::Error, Debug)]
 pub enum PixelaResponseError {
@@ -40,6 +54,37 @@ pub enum PixelaResponseError {
     RetryableError(String, reqwest::StatusCode),
     #[error("{1}: {0}")]
     FatalError(String, reqwest::StatusCode),
+    #[error("{}", .errors.iter().map(|e| e.to_string()).collect::<Vec<_>>().join("\n"))]
+    FatalSendingPixelsError {
+        errors: Vec<FatalError>,
+        pixels: Vec<Pixel>,
+    },
+}
+#[derive(Debug)]
+pub struct FatalError {
+    message: String,
+    code: reqwest::StatusCode,
+}
+impl FatalError {
+    pub fn new(message: String, code: reqwest::StatusCode) -> Self {
+        Self { message, code }
+    }
+}
+impl TryFrom<Error> for FatalError {
+    type Error = self::Error;
+    fn try_from(value: Error) -> std::result::Result<Self, Error> {
+        match value {
+            Error::PixelaResponseError(PixelaResponseError::FatalError(message, code)) => {
+                Ok(Self { message, code })
+            }
+            _ => Err(Error::MiscError("Not supported conversion".into())),
+        }
+    }
+}
+impl Display for FatalError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.message)
+    }
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -65,6 +110,8 @@ pub enum Error {
     TomlSerError(#[from] toml::ser::Error),
     #[error("Async Error: {0}")]
     AsyncError(String),
+    #[error("Misc Error: {0}")]
+    MiscError(String),
 }
 impl Error {
     pub fn handle_error_and_consume_data<T>(result: Result<T>) -> Option<Popup> {

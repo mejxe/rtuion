@@ -1,15 +1,15 @@
-use std::{fs, time::Duration, u8, vec};
+use std::{collections::HashMap, fs, future::Future, process::exit, time::Duration, u8, vec};
 
 use crate::{
-    error::{Error, PixelaResponseError, Result, SettingsError, StatsError},
+    error::{Error, FatalError, PixelaResponseError, Result, SettingsError, StatsError},
     graph::Graph,
-    stats::{ComplexPixel, SimplePixel},
+    stats::{ComplexPixel, PixelaResponse, SimplePixel},
 };
 use chrono::{DateTime, Local};
 use directories::ProjectDirs;
 use futures::{stream, StreamExt};
 use ratatui::widgets::ListState;
-use reqwest::Client;
+use reqwest::{Client, StatusCode};
 use serde_json::Value;
 use tokio::time;
 
@@ -28,14 +28,26 @@ pub struct PixelaClient {
 }
 impl PixelaClient {
     pub fn try_new(user: PixelaUser) -> Result<PixelaClient> {
-        let pixel_res = PixelaClient::load_pixels(&user)?;
-        let pixels = StatefulList::new(pixel_res);
+        let pixel_res = PixelaClient::load_pixels(&user);
+        let pixel_vec: Vec<Pixel> = match pixel_res {
+            Ok(pixels) => pixels,
+            Err(err) => {
+                if let Error::SettingsError(SettingsError::NoData()) = err {
+                    Vec::new()
+                } else {
+                    return Err(err);
+                }
+            }
+        };
+        let pixels = StatefulList::new(pixel_vec);
         let pixel_len = pixels.items.len();
+        let mut subjects: StatefulList<Subject> = StatefulList::default();
+        subjects.push(Subject::new_dummy());
         Ok(PixelaClient {
             client: Client::new(),
             pixels,
             user,
-            subjects: StatefulList::default(),
+            subjects,
             logged_in: false,
             focused_pane: 1,
             pixels_to_send: vec![0; 2 * pixel_len],
@@ -110,6 +122,9 @@ impl PixelaClient {
                 "User does not have a progress file".to_string(),
             )));
         };
+        if !path.join(format!("{}.json", user.username())).exists() {
+            return Err(SettingsError::NoData().into());
+        }
         if let Ok(data) = &fs::read_to_string(path.join(format!("{}.json", user.username()))) {
             let val: Vec<Pixel> = serde_json::from_str(data).unwrap();
             Ok(val)
@@ -119,22 +134,25 @@ impl PixelaClient {
             )))
         }
     }
-    pub async fn send_pixels(&mut self) -> Result<Vec<Pixel>> {
+    pub async fn send_and_handle_response<F, Fut>(
+        &mut self,
+        mut pixel_pool: Vec<Pixel>,
+        mut func: F,
+    ) -> Result<Vec<Pixel>>
+    where
+        F: FnMut(ComplexPixel, Client, PixelaUser) -> Fut,
+        Fut: Future<Output = (ComplexPixel, Result<()>)>,
+    {
         let mut unresolved_pixels = Vec::<Pixel>::new();
         let mut resolved_pixels = Vec::<Pixel>::new();
-
-        let mut pixel_pool = self.take_selected_pixels(true);
+        let mut errors: Vec<FatalError> = vec![];
         while !pixel_pool.is_empty() {
             let pixels = std::mem::take(&mut pixel_pool);
-            let futures = pixels.iter().filter_map(|pixel| match pixel {
+            let futures = pixels.into_iter().filter_map(|pixel| match pixel {
                 Pixel::Complex(pixel) => {
                     let client_clone = self.client.clone();
                     let user_clone = self.user.clone();
-                    let fut = async move {
-                        let response = pixel.upload(client_clone, &user_clone).await;
-                        (pixel, response)
-                    };
-                    Some(fut)
+                    Some(func(pixel, client_clone, user_clone))
                 }
                 Pixel::Simple(_) => None,
             });
@@ -146,10 +164,14 @@ impl PixelaClient {
                             pixel_pool.push(Pixel::Complex(pixel.clone()));
                             time::sleep(Duration::from_millis(100)).await;
                         }
+                        Error::PixelaResponseError(PixelaResponseError::FatalError(_, _)) => {
+                            unresolved_pixels.push(Pixel::Complex(pixel.clone()));
+                            errors.push(err.try_into()?);
+                        }
                         _ => {
                             // if not expected/fatal error variant write it back to store later
                             unresolved_pixels.push(Pixel::Complex(pixel.clone()));
-                            return Err(err);
+                            errors.push(FatalError::new(err.to_string(), StatusCode::IM_A_TEAPOT));
                         }
                     }
                 } else {
@@ -157,14 +179,56 @@ impl PixelaClient {
                 }
             }
         }
-        let len = self.pixels_to_send.len();
+        if !errors.is_empty() {
+            return Err(PixelaResponseError::FatalSendingPixelsError {
+                errors,
+                pixels: unresolved_pixels,
+            }
+            .into());
+        }
+        Ok(resolved_pixels)
+    }
+    pub async fn send_pixels(&mut self) -> Result<Vec<Pixel>> {
+        let pixel_pool = self.get_and_increment_pixels().await?;
+        let operation = |pixel: ComplexPixel, client: Client, user: PixelaUser| async move {
+            let response = pixel.upload(client, &user).await;
+            (pixel, response)
+        };
+        let result: Result<Vec<Pixel>> =
+            match self.send_and_handle_response(pixel_pool, operation).await {
+                Ok(resolved_pixels) => Ok(resolved_pixels),
+                Err(mut err) => {
+                    if let Error::PixelaResponseError(
+                        PixelaResponseError::FatalSendingPixelsError { errors: _, pixels },
+                    ) = &mut err
+                    {
+                        let len = self.pixels_to_send.len();
 
-        self.pixels_to_send = vec![0; len];
-        self.pixels.items.append(&mut unresolved_pixels);
+                        self.pixels_to_send = vec![0; len];
+                        self.pixels.items.append(pixels);
+                    }
+                    Err(err)
+                }
+            };
+        self.pixels.refresh_state();
         self.save_pixels()?;
+        result
+    }
+    pub async fn get_and_increment_pixels(&mut self) -> Result<Vec<Pixel>> {
+        let pixel_pool = self.take_pixels_combined();
+        let operation = |mut pixel: ComplexPixel, client: Client, user: PixelaUser| async move {
+            let response = pixel
+                .increment_self_quantity_from_pixela_data(client, &user)
+                .await;
+            (pixel, response)
+        };
+        let resolved_pixels = self.send_and_handle_response(pixel_pool, operation).await?;
         Ok(resolved_pixels)
     }
     pub fn get_current_subject(&self) -> Option<Subject> {
+        if self.current_subject_index == 0 {
+            return None;
+        };
         self.subjects
             .items
             .get(self.current_subject_index())
@@ -201,8 +265,8 @@ impl PixelaClient {
                         _ => return Err(resp),
                     };
                 }
-                Ok(subjects) => {
-                    self.subjects.set_items(subjects);
+                Ok(mut subjects) => {
+                    self.subjects.items.append(&mut subjects);
                     break;
                 }
             }
@@ -367,15 +431,40 @@ impl PixelaClient {
             .filter_map(|index| self.pixels.items.get(*index).cloned())
             .collect()
     }
+    pub fn take_pixels_combined(&mut self) -> Vec<Pixel> {
+        let pixels: Vec<Pixel> = self
+            .take_selected_pixels(true)
+            .into_iter()
+            .filter_map(|pixel| match pixel {
+                Pixel::Complex(pixel) => Some(pixel),
+                Pixel::Simple(_) => None,
+            })
+            .fold(HashMap::new(), |mut acc, pixel| {
+                let key = (pixel.date_no_time().clone(), pixel.subject().clone());
+                let total_quantity = acc.entry(key).or_insert(0);
+                *total_quantity += pixel.progress().hours(pixel.subject().unit());
+                acc
+            })
+            .into_iter()
+            .map(|entry| {
+                let mut pixel = ComplexPixel::new(
+                    Progress::Int(entry.1),
+                    entry.0 .1.clone(),
+                    entry.0 .0.clone().to_string(),
+                );
+                pixel.into_aggregate();
+                Pixel::Complex(pixel)
+            })
+            .collect();
+        pixels
+    }
     pub fn take_selected_pixels(&mut self, complex_only: bool) -> Vec<Pixel> {
         let pixels: Vec<usize> = self
             .pixels_to_send
             .iter()
             .enumerate()
             .filter_map(|(index, element)| {
-                if complex_only && *element == 1 {
-                    Some(index)
-                } else if !complex_only && *element != 0 {
+                if complex_only && *element == 1 || !complex_only && *element != 0 {
                     Some(index)
                 } else {
                     None
@@ -455,6 +544,17 @@ impl<T> StatefulList<T> {
 
     pub fn select_previous(&mut self) {
         self.state.select_previous()
+    }
+    pub fn refresh_state(&mut self) {
+        if let Some(selected) = self.state.selected() {
+            if selected >= self.items.len() {
+                if !self.items.is_empty() {
+                    self.state.select(Some(self.items.len() - 1));
+                } else {
+                    self.state.select(None);
+                }
+            }
+        }
     }
 }
 impl<T> Default for StatefulList<T> {

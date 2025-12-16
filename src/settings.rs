@@ -31,16 +31,16 @@ pub struct UISettings {
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TimerSettings {
-    pub work_time: i64,
-    pub break_time: i64,
+    pub work_time: i64,  // seconds
+    pub break_time: i64, // seconds
     pub iterations: u8,
 }
 
 #[derive(Debug, Clone, PartialEq, Copy)]
 pub enum PomodoroSettings {
-    WorkTime(Option<i64>),
-    BreakTime(Option<i64>),
-    Iterations(Option<u8>),
+    WorkTime(i64),
+    BreakTime(i64),
+    Iterations(u8),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -87,19 +87,14 @@ impl SettingsTab {
         self.timer_settings = TimerSettings::default();
         self.ui_settings = UISettings::default();
     }
-
-    pub fn get_pomodoro_setting(&self, setting: PomodoroSettings) -> PomodoroSettings {
-        match setting {
-            PomodoroSettings::BreakTime(_) => {
-                PomodoroSettings::BreakTime(Some(self.timer_settings.break_time))
-            }
-            PomodoroSettings::WorkTime(_) => {
-                PomodoroSettings::WorkTime(Some(self.timer_settings.work_time))
-            }
-            PomodoroSettings::Iterations(_) => {
-                PomodoroSettings::Iterations(Some(self.timer_settings.iterations))
-            }
-        }
+    pub fn get_iterations(&self) -> usize {
+        self.timer_settings.iterations as usize
+    }
+    pub fn get_work_time(&self) -> usize {
+        self.timer_settings.work_time as usize
+    }
+    pub fn get_break_time(&self) -> usize {
+        self.timer_settings.break_time as usize
     }
 
     pub fn select_down(&mut self) {
@@ -218,14 +213,14 @@ impl Default for TimerSettings {
 impl From<PomodoroState> for PomodoroSettings {
     fn from(value: PomodoroState) -> Self {
         match value {
-            PomodoroState::Work(time) => PomodoroSettings::WorkTime(Some(time)),
-            PomodoroState::Break(time) => PomodoroSettings::BreakTime(Some(time)),
+            PomodoroState::Work(time) => PomodoroSettings::WorkTime(time),
+            PomodoroState::Break(time) => PomodoroSettings::BreakTime(time),
         }
     }
 }
 impl From<u8> for PomodoroSettings {
     fn from(value: u8) -> Self {
-        PomodoroSettings::Iterations(Some(value))
+        PomodoroSettings::Iterations(value)
     }
 }
 #[cfg(test)]

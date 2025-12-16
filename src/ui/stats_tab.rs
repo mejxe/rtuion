@@ -1,4 +1,3 @@
-
 use crate::pixela_client::PixelaClient;
 use crate::stats::{Pixel, Subject};
 use crate::ui::{BG, BLUE, GREEN, RED, YELLOW};
@@ -179,7 +178,7 @@ impl PixelaClient {
 
         let inner_area = block.inner(area);
 
-        if self.subjects().is_empty() {
+        if self.subjects().len() < 2 {
             block.render(area, buf);
             let no_subjects_text = Paragraph::new("Subjects appear after logging in...")
                 .alignment(Alignment::Center)
@@ -201,7 +200,7 @@ impl PixelaClient {
                     .map(|subject| {
                         SubjectToListWrapper {
                             subject,
-                            selected: self.get_current_subject().unwrap() == **subject,
+                            selected: self.get_subject(0).unwrap() == **subject,
                         }
                         .into()
                     })
@@ -285,6 +284,9 @@ impl From<SubjectToListWrapper<'_>> for ListItem<'_> {
         let subject_text = value.subject.graph_name().to_string();
 
         let line = match value.selected {
+            true if value.subject.is_dummy() => {
+                Line::styled(subject_text, Style::default().fg(GREEN))
+            }
             true => Line::styled(
                 format!("{} [Tracking]", subject_text),
                 Style::default().fg(GREEN),

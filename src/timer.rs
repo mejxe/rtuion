@@ -1,7 +1,5 @@
-use crate::{
-    settings::{*},
-    DEFAULT_BREAK, DEFAULT_ITERATIONS, DEFAULT_WORK,
-};
+use crate::{settings::*, DEFAULT_BREAK, DEFAULT_ITERATIONS, DEFAULT_WORK};
+use actually_beep::beep_with_hz_and_millis;
 use std::{cell::RefCell, fmt::Display, rc::Rc, time::Duration};
 use tokio_util::sync::CancellationToken;
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -41,8 +39,8 @@ pub enum TimerCommand {
 impl Timer {
     pub fn get_duration(pomodoro_state: &PomodoroState) -> i64 {
         match pomodoro_state {
-            PomodoroState::Work(dur) | PomodoroState::Break(dur) => return *dur,
-        };
+            PomodoroState::Work(dur) | PomodoroState::Break(dur) => *dur,
+        }
     }
     pub fn set_total_time(&mut self) {
         let duration = Timer::get_duration(&self.work_state);
@@ -99,6 +97,10 @@ impl Timer {
         if !self.settings.borrow().ui_settings.pause_after_state_change {
             self.start().await;
         }
+        match self.get_current_state() {
+            PomodoroState::Work(_) => beep_work(),
+            PomodoroState::Break(_) => beep_break(),
+        }
     }
     pub async fn send_countdown_commands(&self, command: TimerCommand) {
         if let Some(tx) = &self.countdown_command_tx {
@@ -117,14 +119,16 @@ impl Timer {
         self.send_countdown_commands(TimerCommand::Restart(self.work_state))
             .await;
     }
+    pub async fn finish(&mut self) {
+        beep_finish();
+        self.restart().await;
+    }
     pub async fn set_setting(&mut self, setting: PomodoroSettings) -> Option<()> {
         if self.get_running() {
             return None;
         };
         match setting {
-            PomodoroSettings::Iterations(iterations) => {
-                self.set_total_iterations(iterations.unwrap())
-            }
+            PomodoroSettings::Iterations(iterations) => self.set_total_iterations(iterations),
             PomodoroSettings::WorkTime(_) => self.set_work_state(PomodoroState::from(setting)),
             PomodoroSettings::BreakTime(_) => self.set_break_state(PomodoroState::from(setting)),
         }
@@ -226,19 +230,19 @@ impl Countdown {
 }
 
 // traits
-impl Into<PomodoroSettings> for &PomodoroState {
-    fn into(self) -> PomodoroSettings {
-        match self {
-            PomodoroState::Break(time) => PomodoroSettings::BreakTime(Some(*time)),
-            PomodoroState::Work(time) => PomodoroSettings::BreakTime(Some(*time)),
+impl From<&PomodoroState> for PomodoroSettings {
+    fn from(val: &PomodoroState) -> Self {
+        match val {
+            PomodoroState::Break(time) => PomodoroSettings::BreakTime(*time),
+            PomodoroState::Work(time) => PomodoroSettings::BreakTime(*time),
         }
     }
 }
 impl From<PomodoroSettings> for PomodoroState {
     fn from(value: PomodoroSettings) -> Self {
         match value {
-            PomodoroSettings::WorkTime(Some(time)) => PomodoroState::Work(time),
-            PomodoroSettings::BreakTime(Some(time)) => PomodoroState::Break(time),
+            PomodoroSettings::WorkTime(time) => PomodoroState::Work(time),
+            PomodoroSettings::BreakTime(time) => PomodoroState::Break(time),
             _ => PomodoroState::Break(-1),
         }
     }
@@ -315,6 +319,27 @@ impl From<TimerSettings> for Countdown {
             running,
         }
     }
+}
+// beeps
+
+fn beep_break() {
+    let _ = beep_with_hz_and_millis(400, 200);
+    let _ = beep_with_hz_and_millis(200, 200);
+    let _ = beep_with_hz_and_millis(150, 200);
+}
+fn beep_work() {
+    let _ = beep_with_hz_and_millis(400, 200);
+    let _ = beep_with_hz_and_millis(500, 200);
+    let _ = beep_with_hz_and_millis(400, 200);
+    let _ = beep_with_hz_and_millis(600, 200);
+}
+fn beep_finish() {
+    let _ = beep_with_hz_and_millis(300, 200);
+    let _ = beep_with_hz_and_millis(400, 150);
+    let _ = beep_with_hz_and_millis(350, 200);
+    let _ = beep_with_hz_and_millis(450, 150);
+    let _ = beep_with_hz_and_millis(400, 200);
+    let _ = beep_with_hz_and_millis(200, 250);
 }
 #[cfg(test)]
 mod tests {}

@@ -229,7 +229,7 @@ impl From<ComplexPixel> for DataPoint {
         }
     }
 }
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, PartialOrd, Eq, Hash)]
 #[serde(rename_all = "lowercase")]
 pub enum PixelaColors {
     Shibafu,

@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+actually_beep = "0.1.1"
 arboard = {version="3.6.1", features=["wayland-data-control"]}
 chrono = "0.4.39"
 crossterm = "0.28.1"
