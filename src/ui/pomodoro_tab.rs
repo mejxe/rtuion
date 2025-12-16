@@ -1,3 +1,4 @@
+use crate::timer::helper_structs::PomodoroState;
 use crate::ui::{BG, BLUE, GREEN, RED, YELLOW};
 use ratatui::layout::Alignment;
 use ratatui::layout::Constraint;
@@ -70,8 +71,8 @@ impl Widget for &Pomodoro {
 
         // Style the state indicator based on current state
         let now_paragraph_style = match self.timer.get_current_state() {
-            crate::timer::PomodoroState::Work(_) => Style::default().fg(BLUE),
-            crate::timer::PomodoroState::Break(_) => Style::default().fg(GREEN),
+            PomodoroState::Work(_) => Style::default().fg(BLUE),
+            PomodoroState::Break(_) => Style::default().fg(GREEN),
         };
 
         let now_paragraph = Paragraph::new(now_text)
@@ -84,8 +85,8 @@ impl Widget for &Pomodoro {
 
         // Create gauge with proper title
         let gauge_style = match self.timer.get_current_state() {
-            crate::timer::PomodoroState::Work(_) => BLUE,
-            crate::timer::PomodoroState::Break(_) => GREEN,
+            PomodoroState::Work(_) => BLUE,
+            PomodoroState::Break(_) => GREEN,
         };
 
         let gauge = Gauge::default()

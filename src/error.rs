@@ -3,10 +3,7 @@ use std::{
     io,
 };
 
-use crate::{
-    popup::Popup,
-    stats::{ComplexPixel, Pixel},
-};
+use crate::{popup::Popup, stats::pixel::Pixel};
 
 #[derive(thiserror::Error, Debug)]
 pub enum SettingsError {

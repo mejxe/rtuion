@@ -5,10 +5,13 @@ use tokio_util::sync::CancellationToken;
 use crate::{
     app::Event,
     error::{Result, StatsError},
-    pixela_client::PixelaClient,
     settings::{PomodoroSettings, SettingsTab},
-    stats::{self, PixelaUser, Subject},
-    timer::*,
+    stats::pixela::{pixela_client::PixelaClient, pixela_user::PixelaUser, subjects::Subject},
+    timer::{
+        helper_structs::{PomodoroState, TimerCommand},
+        timer::Timer,
+    },
+    HOUR_INCREMENT,
 };
 
 #[derive(Debug)]
@@ -167,10 +170,9 @@ impl Pomodoro {
         let increment: i64;
         let current_state = self.timer.get_current_state();
         if let Some(sub) = self.get_current_subject() {
-            //increment = (sub.get_min_increment()*10) as i64;
-            increment = 10;
+            increment = (sub.get_min_increment() * 10) as i64;
         } else {
-            increment = (stats::HOUR_INCREMENT * 10) as i64;
+            increment = (HOUR_INCREMENT * 10) as i64;
         }
 
         if let PomodoroState::Work(_) = current_state {

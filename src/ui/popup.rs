@@ -10,7 +10,7 @@ use ratatui::{
 
 use crate::{
     popup::{Popup, PopupKind},
-    stats::Pixel,
+    stats::pixel::Pixel,
 };
 
 use super::{stats_tab::PixelToListWrapper, BG, GREEN, RED, YELLOW};

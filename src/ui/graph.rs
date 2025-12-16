@@ -1,11 +1,10 @@
-
 use ratatui::{
     style::{Style, Stylize},
     text::Line,
     widgets::{Bar, BarChart, BarGroup, Block, Widget},
 };
 
-use crate::graph::Graph;
+use crate::stats::pixela::graph::Graph;
 
 impl Widget for &Graph {
     fn render(self, area: ratatui::prelude::Rect, buf: &mut ratatui::prelude::Buffer)

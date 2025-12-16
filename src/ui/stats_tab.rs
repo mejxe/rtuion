@@ -1,5 +1,6 @@
-use crate::pixela_client::PixelaClient;
-use crate::stats::{Pixel, Subject};
+use crate::stats::pixel::Pixel;
+use crate::stats::pixela::pixela_client::PixelaClient;
+use crate::stats::pixela::subjects::Subject;
 use crate::ui::{BG, BLUE, GREEN, RED, YELLOW};
 use ratatui::buffer::Buffer;
 use ratatui::layout::Constraint;

@@ -2,22 +2,27 @@ use std::{collections::HashMap, fs, future::Future, process::exit, time::Duratio
 
 use crate::{
     error::{Error, FatalError, PixelaResponseError, Result, SettingsError, StatsError},
-    graph::Graph,
-    stats::{ComplexPixel, PixelaResponse, SimplePixel},
+    stats::pixel::{Pixel, SimplePixel},
 };
 use chrono::{DateTime, Local};
 use directories::ProjectDirs;
 use futures::{stream, StreamExt};
-use ratatui::widgets::ListState;
 use reqwest::{Client, StatusCode};
 use serde_json::Value;
 use tokio::time;
 
-use crate::stats::{self, Pixel, PixelaUser, Progress, Subject};
+use super::{
+    complex_pixel::ComplexPixel,
+    graph::Graph,
+    pixela_user::PixelaUser,
+    subjects::{Progress, Subject},
+    utils::StatefulList,
+};
+
 #[derive(Debug)]
 pub struct PixelaClient {
     pub client: reqwest::Client,
-    pub user: stats::PixelaUser,
+    pub user: PixelaUser,
     pub pixels: StatefulList<Pixel>,
     pub subjects: StatefulList<Subject>,
     pub logged_in: bool,
@@ -40,7 +45,7 @@ impl PixelaClient {
             }
         };
         let pixels = StatefulList::new(pixel_vec);
-        let pixel_len = pixels.items.len();
+        let pixel_len = pixels.items().len();
         let mut subjects: StatefulList<Subject> = StatefulList::default();
         subjects.push(Subject::new_dummy());
         Ok(PixelaClient {
@@ -205,7 +210,7 @@ impl PixelaClient {
                         let len = self.pixels_to_send.len();
 
                         self.pixels_to_send = vec![0; len];
-                        self.pixels.items.append(pixels);
+                        self.pixels.items_mut().append(pixels);
                     }
                     Err(err)
                 }
@@ -230,12 +235,12 @@ impl PixelaClient {
             return None;
         };
         self.subjects
-            .items
+            .items()
             .get(self.current_subject_index())
             .cloned()
     }
     pub fn get_subject(&self, index: usize) -> Option<Subject> {
-        self.subjects.items.get(index).cloned()
+        self.subjects.items().get(index).cloned()
     }
     pub async fn log_in(&mut self) -> Result<()> {
         if !self.user.validate_not_empty() {
@@ -266,7 +271,7 @@ impl PixelaClient {
                     };
                 }
                 Ok(mut subjects) => {
-                    self.subjects.items.append(&mut subjects);
+                    self.subjects.items_mut().append(&mut subjects);
                     break;
                 }
             }
@@ -275,7 +280,7 @@ impl PixelaClient {
         Ok(())
     }
     pub async fn request_graph(&mut self) -> Result<()> {
-        if let Some(subject_index) = self.subjects.state.selected() {
+        if let Some(subject_index) = self.subjects.state().selected() {
             if let Some(subject) = self.get_subject(subject_index) {
                 self.set_current_graph(Some(
                     Graph::download_graph(self.user.clone(), self.client.clone(), subject).await?,
@@ -347,8 +352,8 @@ impl PixelaClient {
         };
     }
     pub fn delete_pixel(&mut self) -> Result<()> {
-        if let Some(index) = self.pixels.state.selected() {
-            self.pixels.items.remove(index);
+        if let Some(index) = self.pixels.state().selected() {
+            self.pixels.items_mut().remove(index);
             self.save_pixels()?;
         };
         Ok(())
@@ -385,7 +390,7 @@ impl PixelaClient {
         }
     }
     pub async fn push_pixel(&mut self) -> Result<()> {
-        if let Some(index) = self.pixels.state.selected() {
+        if let Some(index) = self.pixels.state().selected() {
             if let Some(Pixel::Complex(pixel)) = self.pixels().get(index) {
                 loop {
                     let response = pixel.upload(self.client.clone(), &self.user).await;
@@ -428,7 +433,7 @@ impl PixelaClient {
             .collect();
         pixels
             .iter()
-            .filter_map(|index| self.pixels.items.get(*index).cloned())
+            .filter_map(|index| self.pixels.items().get(*index).cloned())
             .collect()
     }
     pub fn take_pixels_combined(&mut self) -> Vec<Pixel> {
@@ -474,7 +479,7 @@ impl PixelaClient {
         pixels
             .into_iter()
             .rev()
-            .map(|index| self.pixels.items.remove(index))
+            .map(|index| self.pixels.items_mut().remove(index))
             .collect()
     }
 
@@ -496,72 +501,5 @@ impl PixelaClient {
 
     pub fn current_graph_mut(&mut self) -> &mut Option<Graph> {
         &mut self.current_graph
-    }
-}
-#[derive(Debug)]
-pub struct StatefulList<T> {
-    items: Vec<T>,
-    state: ListState,
-}
-impl<T> StatefulList<T> {
-    pub fn new(items: Vec<T>) -> StatefulList<T> {
-        Self {
-            items,
-            state: ListState::default(),
-        }
-    }
-    pub fn set_items(&mut self, items: Vec<T>) {
-        self.items = items;
-    }
-
-    pub fn push(&mut self, value: T) {
-        self.items.push(value)
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.items.is_empty()
-    }
-
-    pub fn iter(&self) -> std::slice::Iter<'_, T> {
-        self.items.iter()
-    }
-
-    pub fn items(&self) -> &[T] {
-        &self.items
-    }
-
-    pub fn state(&self) -> &ListState {
-        &self.state
-    }
-
-    pub fn state_mut(&mut self) -> &mut ListState {
-        &mut self.state
-    }
-
-    pub fn select_next(&mut self) {
-        self.state.select_next()
-    }
-
-    pub fn select_previous(&mut self) {
-        self.state.select_previous()
-    }
-    pub fn refresh_state(&mut self) {
-        if let Some(selected) = self.state.selected() {
-            if selected >= self.items.len() {
-                if !self.items.is_empty() {
-                    self.state.select(Some(self.items.len() - 1));
-                } else {
-                    self.state.select(None);
-                }
-            }
-        }
-    }
-}
-impl<T> Default for StatefulList<T> {
-    fn default() -> StatefulList<T> {
-        StatefulList {
-            items: Vec::new(),
-            state: ListState::default(),
-        }
     }
 }

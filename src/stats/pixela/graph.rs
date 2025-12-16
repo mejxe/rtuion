@@ -10,8 +10,13 @@ use serde_json::Value;
 
 use crate::{
     error::{Error, PixelaResponseError, Result, SettingsError},
-    stats::{ComplexPixel, PixelaUser, Progress, Subject},
     ui::{BLUE, GREEN, RED, YELLOW},
+};
+
+use super::{
+    complex_pixel::ComplexPixel,
+    pixela_user::PixelaUser,
+    subjects::{Progress, Subject},
 };
 
 #[derive(Debug, Serialize, Deserialize)]

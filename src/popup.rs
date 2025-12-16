@@ -2,7 +2,7 @@ use std::process::exit;
 
 use ratatui::widgets::{List, ListState};
 
-use crate::{app::App, stats::Pixel};
+use crate::{app::App, stats::pixel::Pixel};
 
 #[derive(Debug)]
 pub struct Popup {

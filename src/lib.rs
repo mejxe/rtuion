@@ -1,15 +1,16 @@
 pub mod app;
 pub mod error;
-pub mod graph;
-pub mod pixela_client;
 pub mod popup;
 pub mod romodoro;
 pub mod settings;
 pub mod stats;
 pub mod timer;
 pub mod ui;
+pub mod utils;
 pub const DEFAULT_WORK: i64 = 1800;
 pub const DEFAULT_ITERATIONS: u8 = 4;
 pub const DEFAULT_BREAK: i64 = 300;
 pub const WORK_TIME_INCR: i64 = 900;
 pub const BREAK_TIME_INCR: i64 = 60;
+pub const HOUR_INCREMENT: usize = 60;
+pub const MINUTES_INCREMENT: usize = 15;

@@ -1,8 +1,8 @@
 use crate::error::Error;
-use crate::graph::Graph;
 use crate::popup::{Popup, PopupKind};
 use crate::romodoro::Pomodoro;
 use crate::settings::*;
+use crate::stats::pixela::graph::Graph;
 use crate::ui::popup::{list_height, popup_area};
 use arboard::Clipboard;
 use core::panic;
