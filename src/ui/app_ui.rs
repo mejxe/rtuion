@@ -1,5 +1,10 @@
-use super::YELLOW;
-use crate::{app::App, settings::Mode};
+use super::{settings_tab::SettingsTab, YELLOW};
+use crate::{
+    app::{self, App},
+    settings::Mode,
+    stats::pixela::utils,
+    utils::tabs,
+};
 use ratatui::{
     self,
     buffer::Buffer,
@@ -17,7 +22,7 @@ impl Widget for &mut App {
             .iter()
             .map(|t| Span::styled(*t, Style::default().fg(Color::White)))
             .collect();
-        let selected_tab = self.get_selected_tab();
+        let selected_tab = self.selected_tab();
 
         let tabs_widget = Tabs::new(tab_titles)
             .block(
@@ -28,7 +33,7 @@ impl Widget for &mut App {
                     .border_style(Style::default().fg(YELLOW)),
             )
             .highlight_style(Style::default().fg(Color::Rgb(240, 94, 90)))
-            .select(selected_tab as usize);
+            .select::<usize>(selected_tab.into());
 
         let layout = Layout::default()
             .direction(Direction::Vertical)
@@ -51,27 +56,31 @@ impl Widget for &mut App {
             return;
         }
         match selected_tab {
-            0 => self.get_pomodoro_ref().render(layout[1], buf),
-            1 => self.get_settings_ref().borrow().render(layout[1], buf),
-            2 => {
-                if let Some(stats_client) = self.get_pomodoro_ref_mut().pixela_client_as_mut() {
+            tabs::Tabs::TimerTab => self.pomodoro().render(layout[1], buf),
+            tabs::Tabs::SettingsTab => SettingsTab::new(
+                &self.get_settings_ref().borrow(),
+                &self.pomodoro().timer,
+                self.pomodoro().pixela_client(),
+            )
+            .render(layout[1], buf),
+            tabs::Tabs::StatsTab => {
+                if let Some(stats_client) = self.pomodoro_mut().pixela_client_as_mut() {
                     stats_client.render(layout[1], buf);
                 } else {
                     self.render_stats(layout[1], buf);
                 }
             }
-            _ => {}
         }
         self.render_footer(layout[2], buf);
     }
 }
 impl App {
     pub fn render_footer(&self, area: Rect, buf: &mut Buffer) {
-        let footer_text = match self.get_selected_tab() {
-            0 => "Space: Start/Stop | Tab: Next Tab | Q: Quit",
-            1 if self.get_settings_ref().borrow().mode() == &Mode::Input => "Input Mode On | Esc: Normal Mode",
-            1 if [4,5].contains( &self.get_settings_ref().borrow().selected_setting )=> "↑↓: Select | Enter: Input Mode | Space: Confirm | Tab: Next Tab | r: Restore Defaults | Q: Quit |" ,
-            1 => "↑↓: Select | ←→: Adjust Value | Space: Confirm | Tab: Next Tab | r: Restore Defaults | Q: Quit |" ,
+        let footer_text = match self.selected_tab() {
+             tabs::Tabs::TimerTab=> "Space: Start/Stop | Tab: Next Tab | Q: Quit",
+            tabs::Tabs::SettingsTab if self.get_settings_ref().borrow().mode() == Mode::Input => "Input Mode On | Esc: Normal Mode",
+            tabs::Tabs::SettingsTab if [4,5].contains( &self.get_settings_ref().borrow().selected_setting )=> "↑↓: Select | Enter: Input Mode | Space: Confirm | Tab: Next Tab | r: Restore Defaults | Q: Quit |" ,
+            tabs::Tabs::SettingsTab => "↑↓: Select | ←→: Adjust Value | Space: Confirm | Tab: Next Tab | r: Restore Defaults | Q: Quit |" ,
             _ => "Tab: Next Tab | Q: Quit",
         };
 

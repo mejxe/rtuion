@@ -8,9 +8,9 @@ use ratatui::layout::Direction;
 use ratatui::layout::Layout;
 use ratatui::layout::{Alignment, Rect};
 use ratatui::style::palette::tailwind::SLATE;
-use ratatui::style::Color;
 use ratatui::style::Modifier;
 use ratatui::style::Style;
+use ratatui::style::{Color, Stylize};
 use ratatui::text::Line;
 use ratatui::widgets::Widget;
 use ratatui::widgets::{Block, List};
@@ -82,11 +82,8 @@ impl PixelaClient {
             block.render(area, buf);
             let no_pixels_text = Paragraph::new("No pixels saved")
                 .alignment(Alignment::Center)
-                .style(
-                    Style::default()
-                        .fg(Color::Gray)
-                        .add_modifier(Modifier::ITALIC),
-                );
+                .style(Style::default().fg(Color::Gray))
+                .bold();
             no_pixels_text.render(inner_area, buf);
         } else {
             if self.focused_pane() == 0 && self.pixels.state().selected().is_none() {
@@ -156,12 +153,9 @@ impl PixelaClient {
 
         // Sync message area
         let message_text = Paragraph::new(message)
-            .style(
-                Style::default()
-                    .fg(Color::Gray)
-                    .add_modifier(Modifier::ITALIC),
-            )
-            .alignment(Alignment::Center);
+            .style(Style::default().fg(Color::Gray))
+            .alignment(Alignment::Center)
+            .bold();
         message_text.render(sync_layout[1], buf);
     }
 
@@ -183,11 +177,7 @@ impl PixelaClient {
             block.render(area, buf);
             let no_subjects_text = Paragraph::new("Subjects appear after logging in...")
                 .alignment(Alignment::Center)
-                .style(
-                    Style::default()
-                        .fg(Color::Gray)
-                        .add_modifier(Modifier::ITALIC),
-                );
+                .style(Style::default().fg(Color::Gray));
             no_subjects_text.render(inner_area, buf);
         } else {
             if self.focused_pane() == 2 && self.subjects.state().selected().is_none() {
@@ -230,11 +220,7 @@ impl PixelaClient {
         } else {
             let placeholder_text = Paragraph::new("Press G to render a graph.")
                 .alignment(Alignment::Center)
-                .style(
-                    Style::default()
-                        .fg(Color::Gray)
-                        .add_modifier(Modifier::ITALIC),
-                );
+                .style(Style::default().fg(Color::Gray));
             placeholder_text.render(inner_area, buf);
         }
     }

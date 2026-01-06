@@ -25,7 +25,7 @@ impl Widget for &Graph {
 
         // invisible bars for padding
         let mut datapoints: Vec<Bar> = vec![
-            Bar::default().value(0).label("".into()).style(
+            Bar::default().value(0).label("").style(
                 Style::new().fg(ratatui::style::Color::Reset)
             );
             2

@@ -1,151 +1,153 @@
-use crate::timer::helper_structs::PomodoroState;
+use std::process::exit;
+use std::rc::Rc;
+
+use crate::timers::counters::CounterMode;
+use crate::timers::helper_structs::TimerState;
 use crate::ui::{BG, BLUE, GREEN, RED, YELLOW};
-use ratatui::layout::Alignment;
-use ratatui::layout::Constraint;
 use ratatui::layout::Direction;
 use ratatui::layout::Layout;
+use ratatui::layout::{Alignment, Rect};
+use ratatui::layout::{Constraint, Flex};
 use ratatui::style::Color;
 use ratatui::style::Modifier;
 use ratatui::style::Style;
-use ratatui::widgets::Block;
+use ratatui::text::Text;
 use ratatui::widgets::BorderType;
 use ratatui::widgets::Borders;
 use ratatui::widgets::Gauge;
 use ratatui::widgets::Paragraph;
 use ratatui::widgets::Widget;
+use ratatui::widgets::{Block, Padding};
 
 use crate::romodoro::Pomodoro;
 
+use super::ui_utils::UIHelper;
+
 impl Widget for &Pomodoro {
     fn render(self, area: ratatui::prelude::Rect, buf: &mut ratatui::prelude::Buffer) {
-        let time = self.timer.get_timeleft();
-        let total_time = self.timer.get_total_time();
-        let elapsed_time = self.timer.get_total_elapsed_time();
-        let now_text = format!("Now: {}", self.timer.get_current_state());
-        let progress = (elapsed_time) as f64 / total_time as f64;
-        let iterations_text = format!(
-            "{}/{} iterations",
-            self.timer.get_iteration(),
-            self.timer.get_total_iterations()
-        );
+        let time = self.timer.time_left();
+        let now_text = format!("Now: {}", self.timer.current_state());
+        let hide_countdown = self
+            .get_setting_ref()
+            .borrow()
+            .ui_settings
+            .hide_work_countdown;
 
+        let main_title = match self.timer.counter_mode() {
+            CounterMode::Countup => " Flowmodoro Timer ",
+            CounterMode::Countdown => " Pomodoro Timer ",
+        };
         let outer_block = Block::default()
-            .title(" Pomodoro Timer ")
+            .title(main_title)
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
             .style(Style::default().fg(YELLOW)); // Gruvbox yellow for border
 
-        // Determine timer display based on settings and state
-        let (timer_style, text_of_timer) = match self
+        let color = match self.timer.current_state() {
+            TimerState::Work(_) => BLUE,
+            TimerState::Break(_) => GREEN,
+        };
+        let (timer_style, text_of_timer, animation_style, animation_text) = match hide_countdown {
+            true => (
+                Style::default().fg(color),
+                ascii_animation(&BIG_ANIMATION_FRAMES, self.timer.time_left()),
+                Style::default().fg(color),
+                format!(
+                    "{:02}:{:02}:{:02}",
+                    time / 3600,
+                    (time % 3600) / 60,
+                    time % 60
+                ),
+            ),
+            false => (
+                Style::default().fg(color).add_modifier(Modifier::BOLD),
+                format_ascii_time(&format!(
+                    "\n\n{:02}:{:02}:{:02}",
+                    time / 3600,
+                    (time % 3600) / 60,
+                    time % 60
+                )),
+                Style::default().fg(color),
+                "".to_string(),
+            ),
+        };
+        let formatted_timer_text = Text::from(text_of_timer);
+
+        let timer_text = Paragraph::new(formatted_timer_text.patch_style(timer_style))
+            .alignment(Alignment::Center);
+        let formatted_animation_text = Text::from(animation_text);
+        let animation_text = Paragraph::new(formatted_animation_text.patch_style(animation_style))
+            .alignment(Alignment::Center);
+
+        // Style the state indicator based on current state
+        let now_paragraph_style = match self.timer.current_state() {
+            TimerState::Work(_) => Style::default().fg(BLUE),
+            TimerState::Break(_) => Style::default().fg(GREEN),
+        };
+
+        let now_paragraph =
+            UIHelper::create_settings_paragraph(&now_text, Some(now_paragraph_style))
+                .alignment(Alignment::Center);
+        let spacer = Block::bordered()
+            .borders(Borders::TOP)
+            .border_type(BorderType::Thick)
+            .border_style(Style::default().fg(YELLOW));
+
+        let layout_timer = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Min(3),     // Small gap
+                Constraint::Length(1),  // Now text
+                Constraint::Max(5),     // Small gap
+                Constraint::Length(10), // ASCII timer
+                Constraint::Length(3),  // ASCII Spacer
+                Constraint::Length(7),  // ASCII Animation
+                Constraint::Length(0),  // ASCII Spacer
+                Constraint::Max(3),     // Pomodoro/Flowmodoro layouts
+            ])
+            .flex(ratatui::layout::Flex::Center)
+            .split(outer_block.inner(area));
+        let layout_animation = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(0),  // Small gap
+                Constraint::Length(1),  // Now text
+                Constraint::Max(3),     // Small gap
+                Constraint::Length(10), // ASCII timer
+                Constraint::Length(2),  // ASCII Spacer
+                Constraint::Length(1),  // ASCII Animation
+                Constraint::Length(3),  // ASCII Spacer
+                Constraint::Max(7),     // Pomodoro/Flowmodoro layouts
+            ])
+            .flex(ratatui::layout::Flex::Center)
+            .split(outer_block.inner(area));
+        let layout = match self
             .get_setting_ref()
             .borrow()
             .ui_settings
             .hide_work_countdown
         {
-            true if self.timer.get_running() => {
-                (Style::default().fg(RED), format_ascii_time("00:00:00"))
-            }
-            true => (
-                Style::default().fg(RED),
-                format_ascii_time(&format!(
-                    "{:02}:{:02}:{:02}",
-                    time / 3600,
-                    (time % 3600) / 60,
-                    time % 60
-                )),
-            ),
-            false => (
-                Style::default().fg(YELLOW).add_modifier(Modifier::BOLD),
-                format_ascii_time(&format!(
-                    "{:02}:{:02}:{:02}",
-                    time / 3600,
-                    (time % 3600) / 60,
-                    time % 60
-                )),
-            ),
+            false => layout_timer,
+            true => layout_animation,
         };
 
-        let timer_text = Paragraph::new(text_of_timer)
-            .alignment(Alignment::Center)
-            .style(timer_style);
-
-        // Style the state indicator based on current state
-        let now_paragraph_style = match self.timer.get_current_state() {
-            PomodoroState::Work(_) => Style::default().fg(BLUE),
-            PomodoroState::Break(_) => Style::default().fg(GREEN),
-        };
-
-        let now_paragraph = Paragraph::new(now_text)
-            .alignment(Alignment::Center)
-            .style(now_paragraph_style);
-
-        let count_paragraph = Paragraph::new(iterations_text)
-            .alignment(Alignment::Center)
-            .style(Style::default().fg(BLUE).add_modifier(Modifier::ITALIC));
-
-        // Create gauge with proper title
-        let gauge_style = match self.timer.get_current_state() {
-            PomodoroState::Work(_) => BLUE,
-            PomodoroState::Break(_) => GREEN,
-        };
-
-        let gauge = Gauge::default()
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .border_style(gauge_style)
-                    .title(" Progress ")
-                    .title_alignment(Alignment::Center),
-            )
-            .gauge_style(Style::default().fg(gauge_style))
-            .ratio(progress);
-
-        let available_height = area.height.saturating_sub(2);
-
-        let top_margin_percent = if available_height > 20 { 12 } else { 5 };
-        let bottom_margin_percent = if available_height > 20 { 12 } else { 5 };
-
-        let layout = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Percentage(top_margin_percent), // Top margin
-                Constraint::Length(1),                      // Now text
-                Constraint::Length(5),                      // Small gap
-                Constraint::Min(5),                         // ASCII timer
-                Constraint::Length(1),                      // count
-                Constraint::Length(1),                      // Subjects
-                Constraint::Length(1),                      // Small gap
-                Constraint::Length(3),                      // Progress bar
-                Constraint::Percentage(bottom_margin_percent), // Bottom margin
-            ])
-            .split(area);
-
-        // Create horizontal layout for centered gauge
-        let gauge_layout = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([
-                Constraint::Percentage(20),
-                Constraint::Percentage(60),
-                Constraint::Percentage(20),
-            ])
-            .split(layout[7]);
-
+        let spacer_layout = Layout::horizontal([Constraint::Percentage(50)])
+            .flex(Flex::Center)
+            .split(layout[4]);
         // Render all elements
         outer_block.render(area, buf);
         now_paragraph.render(layout[1], buf);
         timer_text.render(layout[3], buf);
-        count_paragraph.render(layout[4], buf);
-        self.render_subject_select(layout[5], buf);
-        gauge.render(gauge_layout[1], buf);
-
-        // Set background color while preserving existing styles
-        for y in area.top()..area.bottom() {
-            for x in area.left()..area.right() {
-                let cell = buf.cell_mut((x, y)).expect("should work lmao");
-                if cell.style().bg == Some(Color::Reset) {
-                    cell.set_style(cell.style().bg(BG));
-                }
-            }
+        spacer.render(spacer_layout[0], buf);
+        let layout_spot = if hide_countdown {
+            animation_text.render(layout[5], buf);
+            7
+        } else {
+            5
+        };
+        match self.timer.counter_mode() {
+            CounterMode::Countdown => self.render_pomodoro_ui(layout[layout_spot], buf),
+            CounterMode::Countup => self.render_flowmodoro_ui(layout[layout_spot], buf),
         }
     }
 }
@@ -161,17 +163,114 @@ impl Pomodoro {
             None => "No subjects".into(),
         };
         let style = match &subject {
-            Some(sub) if self.timer.get_timer_started() | sub.is_dummy() => {
+            Some(sub) if self.timer.timer_started() | sub.is_dummy() => {
                 Style::default().fg(Color::Gray)
             }
             Some(_) => Style::default().fg(YELLOW),
             None => Style::default().fg(Color::Gray),
         };
-        let subject_paragraph = Paragraph::new(format!("Tracking: {subject_name}"))
-            .alignment(Alignment::Center)
-            .style(style);
+        let subject_paragraph =
+            UIHelper::create_settings_paragraph(&format!("Tracking: {subject_name}"), Some(style));
         subject_paragraph.render(area, buf);
     }
+    fn render_flowmodoro_ui(
+        &self,
+        area: ratatui::prelude::Rect,
+        buf: &mut ratatui::prelude::Buffer,
+    ) {
+        let outer_block = Block::bordered()
+            .title(" Flowmodoro Summary ")
+            .title_alignment(Alignment::Left)
+            .border_type(BorderType::Rounded)
+            .padding(Padding::symmetric(5, 0))
+            .border_style(Style::default().fg(GREEN));
+        let outer_layout = Layout::horizontal([Constraint::Percentage(40)])
+            .flex(Flex::Center)
+            .split(area);
+        let inside_layout = Layout::vertical([
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Length(1),
+        ])
+        .flex(Flex::Center)
+        .split(outer_block.inner(outer_layout[0]));
+        outer_block.render(outer_layout[0], buf);
+        let time = self.timer.total_elapsed();
+        let worked_for = format!(
+            "{:02} hours, {:02} minutes, {:02} second(s)",
+            time / 3600,
+            (time % 3600) / 60,
+            time % 60
+        );
+        let break_time = if let TimerState::Break(_) = self.timer.current_state() {
+            0
+        } else {
+            self.timer.break_time()
+        };
+        let next_break_time = UIHelper::create_settings_paragraph(
+            &format!("Next break time length: {break_time} second(s) "),
+            None,
+        )
+        .left_aligned();
+        let already_worked_for =
+            UIHelper::create_settings_paragraph(&format!("Already worked for: {worked_for}"), None)
+                .left_aligned();
+        let breaks_taken_num = self.timer.iteration().saturating_sub(1);
+        let breaks_taken =
+            UIHelper::create_settings_paragraph(&format!("Breaks taken: {breaks_taken_num}"), None)
+                .left_aligned();
+        next_break_time.render(inside_layout[0], buf);
+        already_worked_for.render(inside_layout[1], buf);
+        breaks_taken.render(inside_layout[2], buf);
+    }
+    fn render_pomodoro_ui(&self, area: ratatui::prelude::Rect, buf: &mut ratatui::prelude::Buffer) {
+        let total_time = self.timer.total_time();
+        let elapsed_time = self.timer.total_elapsed();
+        let progress = (elapsed_time) as f64 / total_time as f64;
+        let iterations_text = format!(
+            "{}/{} iterations",
+            self.timer.iteration(),
+            self.timer.total_iterations()
+        );
+        let pomodoro_layout = Layout::vertical(vec![
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Length(3),
+        ])
+        .split(area);
+        let count_paragraph = UIHelper::create_settings_paragraph(
+            &iterations_text,
+            Some(Style::default().fg(BLUE).bold()),
+        );
+
+        let gauge_style = match self.timer.current_state() {
+            TimerState::Work(_) => BLUE,
+            TimerState::Break(_) => GREEN,
+        };
+
+        let gauge = Gauge::default()
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(gauge_style)
+                    .title(" Progress ")
+                    .title_alignment(Alignment::Center),
+            )
+            .gauge_style(Style::default().fg(gauge_style))
+            .ratio(progress);
+        let gauge_layout = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(60)])
+            .flex(ratatui::layout::Flex::Center)
+            .split(pomodoro_layout[3]);
+        count_paragraph.render(pomodoro_layout[1], buf);
+        gauge.render(gauge_layout[0], buf);
+        self.render_subject_select(pomodoro_layout[0], buf);
+    }
+}
+fn ascii_animation(frames: &[&str], time: i64) -> String {
+    frames[time as usize % (frames.len() - 1)].to_string()
 }
 fn format_ascii_time(input: &str) -> String {
     let mut output = vec![String::new(); 7];
@@ -194,19 +293,240 @@ fn format_ascii_time(input: &str) -> String {
     output.join("\n")
 }
 
-const ASCII_NUMBERS: [&str; 11] = [
-    "  ███  \n █   █ \n█     █\n█     █\n█     █\n █   █ \n  ███  ", // 0
-    "   █   \n  ██   \n █ █   \n   █   \n   █   \n   █   \n ████  ", // 1
-    " ███   \n█   █  \n    █  \n   █   \n  █    \n █     \n█████  ", // 2
-    " ███   \n█   █  \n    █  \n  ██   \n    █  \n█   █  \n ███   ", // 3
-    "   ██  \n  █ █  \n █  █  \n█   █  \n█████  \n    █  \n    █  ", // 4
-    "█████  \n█      \n████   \n    █  \n    █  \n█   █  \n ███   ", // 5
-    "  ███  \n █     \n█      \n█ ███  \n█    █ \n █   █ \n  ███  ", // 6
-    "█████  \n    █  \n   █   \n  █    \n █     \n █     \n █     ", // 7
-    "  ███  \n █   █ \n █   █ \n  ███  \n █   █ \n █   █ \n  ███  ", // 8
-    "  ███  \n █   █ \n █   █ \n  ████ \n     █ \n    ██ \n  ███  ", // 9
-    "        \n   █    \n   █    \n        \n   █    \n   █    \n        ", // :
+pub const ASCII_NUMBERS: [&str; 11] = [
+    r#"  ███  
+ █   █ 
+█     █
+█     █
+█     █
+ █   █ 
+  ███  "#,
+    r#"   █   
+  ██   
+ █ █   
+   █   
+   █   
+   █   
+ ████  "#,
+    r#" ███   
+█   █  
+    █  
+   █   
+  █    
+ █     
+█████  "#,
+    r#" ███   
+█   █  
+    █  
+  ██   
+    █  
+█   █  
+ ███   "#,
+    r#"   ██  
+  █ █  
+ █  █  
+█   █  
+█████  
+    █  
+    █  "#,
+    r#"█████  
+█      
+████   
+    █  
+    █  
+█   █  
+ ███   "#,
+    r#"  ███  
+ █     
+█      
+█ ███  
+█    █ 
+ █   █ 
+  ███  "#,
+    r#"█████  
+    █  
+   █   
+  █    
+ █     
+ █     
+ █     "#,
+    r#"  ███  
+ █   █ 
+ █   █ 
+  ███  
+ █   █ 
+ █   █ 
+  ███  "#,
+    r#"  ███  
+ █   █ 
+ █   █ 
+  ████ 
+     █ 
+    ██ 
+  ███  "#,
+    r#"       
+   █   
+   █   
+       
+   █   
+   █   
+       "#,
 ];
+pub const BIG_ANIMATION_FRAMES: [&str; 10] = [
+    r#"           ▄▄████▄▄      ░░░░        ▄▄████▄▄           
+         ▄██████████▄              ▄██████████▄         
+       ▄▄██████████████▄▄        ▄▄██████████████▄▄     
+      ▄▄████████████████████▄▄  ▄▄████████████████████▄▄   
+    ████████████████████████████████████████████████████████
+    ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+    ████████████            ████████████            ████████
+    ▒▒▒▒▒▒▒▒      ▒▒▒▒▒▒▒▒      ▒▒▒▒▒▒▒▒      ▒▒▒▒▒▒▒▒      
+    ░░░░      ░░░░░░░░      ░░░░░░░░      ░░░░░░░░      ░░░░
+          .................................................."#,
+    r#"           ▄▄████▄▄       ░░░░       ▄▄████▄▄           
+         ▄██████████▄              ▄██████████▄         
+       ▄▄██████████████▄▄        ▄▄██████████████▄▄     
+      ▄▄████████████████████▄▄  ▄▄████████████████████▄▄   
+    ████████████████████████████████████████████████████████
+    ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+      ████████████            ████████████            ██████
+      ▒▒▒▒▒▒▒▒      ▒▒▒▒▒▒▒▒      ▒▒▒▒▒▒▒▒      ▒▒▒▒▒▒▒▒    
+    ░░░░░░      ░░░░░░░░      ░░░░░░░░      ░░░░░░░░      ░░
+    ..      ................................................"#,
+    r#"           ▄▄████▄▄        ░░░░      ▄▄████▄▄           
+         ▄██████████▄              ▄██████████▄         
+       ▄▄██████████████▄▄        ▄▄██████████████▄▄     
+      ▄▄████████████████████▄▄  ▄▄████████████████████▄▄   
+    ████████████████████████████████████████████████████████
+    ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+        ████████████            ████████████            ████
+        ▒▒▒▒▒▒▒▒      ▒▒▒▒▒▒▒▒      ▒▒▒▒▒▒▒▒      ▒▒▒▒▒▒▒▒  
+    ░░░░░░░░      ░░░░░░░░      ░░░░░░░░      ░░░░░░░░      
+    ....      .............................................."#,
+    r#"           ▄▄████▄▄         ░░░░     ▄▄████▄▄           
+         ▄██████████▄              ▄██████████▄         
+       ▄▄██████████████▄▄        ▄▄██████████████▄▄     
+      ▄▄████████████████████▄▄  ▄▄████████████████████▄▄   
+    ████████████████████████████████████████████████████████
+    ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+          ████████████            ████████████            ██
+    ▒▒      ▒▒▒▒▒▒▒▒      ▒▒▒▒▒▒▒▒      ▒▒▒▒▒▒▒▒      ▒▒▒▒▒▒
+      ░░░░░░░░      ░░░░░░░░      ░░░░░░░░      ░░░░░░░░    
+    ......      ............................................"#,
+    r#"           ▄▄████▄▄          ░░░░    ▄▄████▄▄           
+         ▄██████████▄              ▄██████████▄         
+       ▄▄██████████████▄▄        ▄▄██████████████▄▄     
+      ▄▄████████████████████▄▄  ▄▄████████████████████▄▄   
+    ████████████████████████████████████████████████████████
+    ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+            ████████████            ████████████            
+    ▒▒▒▒      ▒▒▒▒▒▒▒▒      ▒▒▒▒▒▒▒▒      ▒▒▒▒▒▒▒▒      ▒▒▒▒
+        ░░░░░░░░      ░░░░░░░░      ░░░░░░░░      ░░░░░░░░  
+    ........      .........................................."#,
+    r#"           ▄▄████▄▄         ░░░░     ▄▄████▄▄           
+         ▄██████████▄              ▄██████████▄         
+       ▄▄██████████████▄▄        ▄▄██████████████▄▄     
+      ▄▄████████████████████▄▄  ▄▄████████████████████▄▄   
+    ████████████████████████████████████████████████████████
+    ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+    ██            ████████████            ████████████      
+    ▒▒▒▒▒▒      ▒▒▒▒▒▒▒▒      ▒▒▒▒▒▒▒▒      ▒▒▒▒▒▒▒▒      ▒▒
+      ░░░░░░░░      ░░░░░░░░      ░░░░░░░░      ░░░░░░░░    
+    ..........      ........................................"#,
+    r#"           ▄▄████▄▄        ░░░░      ▄▄████▄▄           
+         ▄██████████▄              ▄██████████▄         
+       ▄▄██████████████▄▄        ▄▄██████████████▄▄     
+      ▄▄████████████████████▄▄  ▄▄████████████████████▄▄   
+    ████████████████████████████████████████████████████████
+    ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+    ████            ████████████            ████████████    
+    ▒▒▒▒▒▒▒▒      ▒▒▒▒▒▒▒▒      ▒▒▒▒▒▒▒▒      ▒▒▒▒▒▒▒▒      
+        ░░░░░░░░      ░░░░░░░░      ░░░░░░░░      ░░░░░░░░  
+    ............      ......................................"#,
+    r#"           ▄▄████▄▄       ░░░░       ▄▄████▄▄           
+         ▄██████████▄              ▄██████████▄         
+       ▄▄██████████████▄▄        ▄▄██████████████▄▄     
+      ▄▄████████████████████▄▄  ▄▄████████████████████▄▄   
+    ████████████████████████████████████████████████████████
+    ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+    ██████            ████████████            ████████████  
+      ▒▒▒▒▒▒▒▒      ▒▒▒▒▒▒▒▒      ▒▒▒▒▒▒▒▒      ▒▒▒▒▒▒▒▒    
+    ░░      ░░░░░░░░      ░░░░░░░░      ░░░░░░░░      ░░░░░░
+    ..............      ...................................."#,
+    r#"           ▄▄████▄▄      ░░░░        ▄▄████▄▄           
+         ▄██████████▄              ▄██████████▄         
+       ▄▄██████████████▄▄        ▄▄██████████████▄▄     
+      ▄▄████████████████████▄▄  ▄▄████████████████████▄▄   
+    ████████████████████████████████████████████████████████
+    ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+    ████████            ████████████            ████████████
+        ▒▒▒▒▒▒▒▒      ▒▒▒▒▒▒▒▒      ▒▒▒▒▒▒▒▒      ▒▒▒▒▒▒▒▒  
+    ░░░░      ░░░░░░░░      ░░░░░░░░      ░░░░░░░░      ░░░░
+    ................      .................................."#,
+    r#"           ▄▄████▄▄       ░░░░       ▄▄████▄▄           
+         ▄██████████▄              ▄██████████▄         
+       ▄▄██████████████▄▄        ▄▄██████████████▄▄     
+      ▄▄████████████████████▄▄  ▄▄████████████████████▄▄   
+    ████████████████████████████████████████████████████████
+    ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+    ██████████            ████████████            ██████████
+    ▒▒      ▒▒▒▒▒▒▒▒      ▒▒▒▒▒▒▒▒      ▒▒▒▒▒▒▒▒      ▒▒▒▒▒▒
+    ░░░░░░      ░░░░░░░░      ░░░░░░░░      ░░░░░░░░      ░░
+    ..................      ................................"#,
+];
+pub const SMALL_ANIMATION_FRAMES: [&str; 10] = [
+    r#"       ░░▒▒░░              ░░▒▒░░              ░░▒▒░░       
+     ░░▒▒▓▓▒▒░░          ░░▒▒▓▓▒▒░░          ░░▒▒▓▓▒▒░░     
+   ░░▒▒▓▓██▓▓▒▒░░      ░░▒▒▓▓██▓▓▒▒░░      ░░▒▒▓▓██▓▓▒▒░░   
+           ▄▄████▄▄                    ▄▄██████▄▄           
+████████████████████████████████████████████████████████████"#,
+    r#"     ░░▒▒░░              ░░▒▒░░              ░░▒▒░░         
+   ░░▒▒▓▓▒▒░░          ░░▒▒▓▓▒▒░░          ░░▒▒▓▓▒▒░░       
+ ░░▒▒▓▓██▓▓▒▒░░      ░░▒▒▓▓██▓▓▒▒░░      ░░▒▒▓▓██▓▓▒▒░░     
+           ▄▄████▄▄                    ▄▄██████▄▄           
+████████████████████████████████████████████████████████████"#,
+    r#"   ░░▒▒░░              ░░▒▒░░              ░░▒▒░░           
+ ░░▒▒▓▓▒▒░░          ░░▒▒▓▓▒▒░░          ░░▒▒▓▓▒▒░░         
+▒▒▓▓██▓▓▒▒░░      ░░▒▒▓▓██▓▓▒▒░░      ░░▒▒▓▓██▓▓▒▒░░      ░░
+           ▄▄████▄▄                    ▄▄██████▄▄           
+████████████████████████████████████████████████████████████"#,
+    r#" ░░▒▒░░              ░░▒▒░░              ░░▒▒░░             
+▒▒▓▓▒▒░░          ░░▒▒▓▓▒▒░░          ░░▒▒▓▓▒▒░░          ░░
+▓▓██▓▓▒▒░░      ░░▒▒▓▓██▓▓▒▒░░      ░░▒▒▓▓██▓▓▒▒░░      ░░▒▒
+           ▄▄████▄▄                    ▄▄██████▄▄           
+████████████████████████████████████████████████████████████"#,
+    r#"▒▒░░              ░░▒▒░░              ░░▒▒░░              ░░
+▓▓▒▒░░          ░░▒▒▓▓▒▒░░          ░░▒▒▓▓▒▒░░          ░░▒▒
+██▓▓▒▒░░      ░░▒▒▓▓██▓▓▒▒░░      ░░▒▒▓▓██▓▓▒▒░░      ░░▒▒▓▓
+           ▄▄████▄▄                    ▄▄██████▄▄           
+████████████████████████████████████████████████████████████"#,
+    r#"░░              ░░▒▒░░              ░░▒▒░░              ░░▒▒
+▒▒░░          ░░▒▒▓▓▒▒░░          ░░▒▒▓▓▒▒░░          ░░▒▒▓▓
+▓▓▒▒░░      ░░▒▒▓▓██▓▓▒▒░░      ░░▒▒▓▓██▓▓▒▒░░      ░░▒▒▓▓██
+           ▄▄████▄▄                    ▄▄██████▄▄           
+████████████████████████████████████████████████████████████"#,
+    r#"              ░░▒▒░░              ░░▒▒░░              ░░▒▒░░
+░░          ░░▒▒▓▓▒▒░░          ░░▒▒▓▓▒▒░░          ░░▒▒▓▓▒▒
+▒▒░░      ░░▒▒▓▓██▓▓▒▒░░      ░░▒▒▓▓██▓▓▒▒░░      ░░▒▒▓▓██▓▓
+           ▄▄████▄▄                    ▄▄██████▄▄           
+████████████████████████████████████████████████████████████"#,
+    r#"            ░░▒▒░░              ░░▒▒░░              ░░▒▒░░  
+          ░░▒▒▓▓▒▒░░          ░░▒▒▓▓▒▒░░          ░░▒▒▓▓▒▒░░
+░░      ░░▒▒▓▓██▓▓▒▒░░      ░░▒▒▓▓██▓▓▒▒░░      ░░▒▒▓▓██▓▓▒▒
+           ▄▄████▄▄                    ▄▄██████▄▄           
+████████████████████████████████████████████████████████████"#,
+    r#"          ░░▒▒░░              ░░▒▒░░              ░░▒▒░░    
+        ░░▒▒▓▓▒▒░░          ░░▒▒▓▓▒▒░░          ░░▒▒▓▓▒▒░░  
+      ░░▒▒▓▓██▓▓▒▒░░      ░░▒▒▓▓██▓▓▒▒░░      ░░▒▒▓▓██▓▓▒▒░░
+           ▄▄████▄▄                    ▄▄██████▄▄           
+████████████████████████████████████████████████████████████"#,
+    r#"        ░░▒▒░░              ░░▒▒░░              ░░▒▒░░      
+      ░░▒▒▓▓▒▒░░          ░░▒▒▓▓▒▒░░          ░░▒▒▓▓▒▒░░    
+    ░░▒▒▓▓██▓▓▒▒░░      ░░▒▒▓▓██▓▓▒▒░░      ░░▒▒▓▓██▓▓▒▒░░  
+           ▄▄████▄▄                    ▄▄██████▄▄           
+████████████████████████████████████████████████████████████"#,
+];
+
 #[cfg(test)]
 mod test {
     use super::format_ascii_time;

@@ -1,6 +1,6 @@
 use crate::{
     settings::{PomodoroSettings, TimerSettings},
-    timer::helper_structs::PomodoroState,
+    timers::helper_structs::TimerState,
     DEFAULT_BREAK, DEFAULT_ITERATIONS, DEFAULT_WORK,
 };
 
@@ -10,14 +10,15 @@ impl Default for TimerSettings {
             work_time: DEFAULT_WORK,
             break_time: DEFAULT_BREAK,
             iterations: DEFAULT_ITERATIONS,
+            mode: crate::timers::counters::CounterMode::Countdown,
         }
     }
 }
-impl From<PomodoroState> for PomodoroSettings {
-    fn from(value: PomodoroState) -> Self {
+impl From<TimerState> for PomodoroSettings {
+    fn from(value: TimerState) -> Self {
         match value {
-            PomodoroState::Work(time) => PomodoroSettings::WorkTime(time),
-            PomodoroState::Break(time) => PomodoroSettings::BreakTime(time),
+            TimerState::Work(time) => PomodoroSettings::WorkTime(time),
+            TimerState::Break(time) => PomodoroSettings::BreakTime(time),
         }
     }
 }

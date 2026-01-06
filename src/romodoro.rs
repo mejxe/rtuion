@@ -5,10 +5,10 @@ use tokio_util::sync::CancellationToken;
 use crate::{
     app::Event,
     error::{Result, StatsError},
-    settings::{PomodoroSettings, SettingsTab},
+    settings::{PomodoroSettings, Settings},
     stats::pixela::{pixela_client::PixelaClient, pixela_user::PixelaUser, subjects::Subject},
-    timer::{
-        helper_structs::{PomodoroState, TimerCommand},
+    timers::{
+        helper_structs::{TimerCommand, TimerState},
         timer::Timer,
     },
     HOUR_INCREMENT,
@@ -19,7 +19,7 @@ pub struct Pomodoro {
     pub timer: Timer,
     time_sender: tokio::sync::mpsc::Sender<i64>,
     command_rx: Option<tokio::sync::mpsc::Receiver<TimerCommand>>,
-    settings: Rc<RefCell<SettingsTab>>,
+    settings: Rc<RefCell<Settings>>,
     pixela_client: Option<PixelaClient>,
     duration_since_last_save: i64,
 }
@@ -28,7 +28,7 @@ impl Pomodoro {
         time_sender: tokio::sync::mpsc::Sender<i64>,
         command_rx: tokio::sync::mpsc::Receiver<TimerCommand>,
         command_tx: tokio::sync::mpsc::Sender<TimerCommand>,
-        settings: Rc<RefCell<SettingsTab>>,
+        settings: Rc<RefCell<Settings>>,
     ) -> Self {
         let mut timer = Timer::from(settings.borrow().timer_settings.clone());
         timer.set_config(settings.clone());
@@ -62,12 +62,6 @@ impl Pomodoro {
         } else {
             self.timer.start().await;
         }
-    }
-    pub fn get_work_state(&self) -> PomodoroState {
-        self.timer.get_work_state()
-    }
-    pub fn get_setting_ref(&self) -> Rc<RefCell<SettingsTab>> {
-        self.settings.clone()
     }
     pub fn try_init_pixela_client(&mut self) -> Result<()> {
         let px_stats = &mut self.settings.borrow_mut().stats_setting;
@@ -119,18 +113,6 @@ impl Pomodoro {
             }
         }
     }
-    pub fn set_time_left(&mut self, time: i64) {
-        self.timer.set_time_left(time);
-        self.duration_since_last_save += 1;
-        if let PomodoroState::Work(_) = self.timer.get_current_state() {
-            self.timer.set_elapsed_time(
-                (self.timer.get_iteration() - 1) as i64
-                    * Timer::get_duration(&self.timer.get_work_state())
-                    + Timer::get_duration(&self.get_work_state())
-                    - time,
-            )
-        }
-    }
     pub async fn set_setting(&mut self, setting: PomodoroSettings) -> Option<()> {
         self.timer.set_setting(setting).await
     }
@@ -154,33 +136,32 @@ impl Pomodoro {
             Err(crate::error::StatsError::StatsTrackingTurnedOff().into())
         }
     }
-    pub async fn handle_timer_responses(&mut self, time: i64) -> Result<()> {
+    pub async fn handle_timer_tick(&mut self, time: i64) -> Result<()> {
         self.handle_logging(time)?;
-        if time == -1 && self.timer.get_iteration() < self.timer.get_total_iterations() {
-            self.timer.next_iteration().await;
-        } else if time == -1 && self.timer.get_iteration() >= self.timer.get_total_iterations() {
-            self.timer.stop().await;
-            self.timer.finish().await;
-        } else {
-            self.set_time_left(time);
-        }
+        self.timer.handle_timer_response(time).await;
         Ok(())
     }
     fn handle_logging(&mut self, time: i64) -> Result<()> {
         let increment: i64;
-        let current_state = self.timer.get_current_state();
+        let current_state = self.timer.current_state();
         if let Some(sub) = self.get_current_subject() {
             increment = (sub.get_min_increment() * 10) as i64;
         } else {
             increment = (HOUR_INCREMENT * 10) as i64;
         }
 
-        if let PomodoroState::Work(_) = current_state {
+        if let TimerState::Work(_) = current_state {
             if time % increment == 0 {
                 self.log_pixel_from_duration()?
             }
         }
         Ok(())
+    }
+    pub fn check_pixela_changed(&self, client_username: &str, client_token: &str) -> bool {
+        let settings = &self.settings.borrow().stats_setting;
+        let settings_username = settings.pixela_username.as_ref().expect("");
+        let settings_token = settings.pixela_token.as_ref().expect("");
+        client_token != settings_token || client_username != settings_username
     }
     pub fn is_duration_saved(&self) -> bool {
         self.duration_since_last_save == 0
@@ -197,5 +178,15 @@ impl Pomodoro {
         if let Some(client) = &mut self.pixela_client {
             client.set_current_subject_index(current_subject_index);
         }
+    }
+    pub fn get_setting_ref(&self) -> Rc<RefCell<Settings>> {
+        self.settings.clone()
+    }
+
+    pub async fn set_counter_mode(&mut self, mode: crate::timers::counters::CounterMode) {
+        self.timer.set_counter_mode(mode).await
+    }
+    pub fn clear_pixela(&mut self) {
+        self.pixela_client = None;
     }
 }

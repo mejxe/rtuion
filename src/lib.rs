@@ -1,10 +1,11 @@
 pub mod app;
 pub mod error;
+pub mod handlers;
 pub mod popup;
 pub mod romodoro;
 pub mod settings;
 pub mod stats;
-pub mod timer;
+pub mod timers;
 pub mod ui;
 pub mod utils;
 pub const DEFAULT_WORK: i64 = 1800;

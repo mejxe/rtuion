@@ -6,15 +6,14 @@ use pomodoro::app::*;
 use pomodoro::error::Result;
 use pomodoro::popup::Popup;
 use pomodoro::romodoro::*;
-use pomodoro::settings::SettingsTab;
-// ALPHA 0.1
+use pomodoro::settings::Settings;
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let (tx, rx) = tokio::sync::mpsc::channel(4);
     let (tx_events, rx_events) = tokio::sync::mpsc::channel(32);
     let (tx_commands, rx_commands) = tokio::sync::mpsc::channel(4);
-    let settings_manager = Rc::new(RefCell::new(SettingsTab::new()?));
+    let settings_manager = Rc::new(RefCell::new(Settings::new()?));
     let mut pomodoro = Pomodoro::new(tx, rx_commands, tx_commands, settings_manager.clone());
 
     terminal::enable_raw_mode()?;

@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use strum::Display;
+use strum_macros::Display;
 
 use crate::{
     error::{Result, StatsError},

@@ -184,7 +184,7 @@ impl Graph {
             .map(|dp| {
                 Bar::default()
                     .value(dp.quantity_as_u64(self.subject()))
-                    .label(dp.label().into())
+                    .label(dp.label())
                     .style(Style::default().fg(self.subject().color().to_ratatui_color()))
             })
             .collect()
