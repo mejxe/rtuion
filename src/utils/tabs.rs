@@ -12,6 +12,13 @@ impl Tabs {
             Tabs::StatsTab => Tabs::TimerTab,
         };
     }
+    pub fn prev(&mut self) {
+        *self = match self {
+            Tabs::TimerTab => Tabs::StatsTab,
+            Tabs::SettingsTab => Tabs::TimerTab,
+            Tabs::StatsTab => Tabs::SettingsTab,
+        };
+    }
 }
 impl From<Tabs> for usize {
     fn from(value: Tabs) -> Self {

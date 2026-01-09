@@ -25,14 +25,14 @@ impl ComplexPixel {
     }
     pub async fn upload(&self, client: reqwest::Client, pixela_user: &PixelaUser) -> Result<()> {
         check_if_quantity_is_big_enough(self)?;
-        send_to_pixela(self, &client, &pixela_user.token()).await
+        send_to_pixela(self, &client, pixela_user.token()).await
     }
     pub async fn increment_self_quantity_from_pixela_data(
         &mut self,
         client: reqwest::Client,
         pixela_user: &PixelaUser,
     ) -> Result<()> {
-        self.progress += get_from_pixela(self, &client, &pixela_user.token()).await?;
+        self.progress += get_from_pixela(self, &client, pixela_user.token()).await?;
         Ok(())
     }
 
@@ -62,7 +62,7 @@ impl ComplexPixel {
         &self.subject
     }
     pub fn into_aggregate(&mut self) {
-        if self.subject().graph_name().contains("(Aggregated)") {
+        if self.subject().graph_name().contains("Aggregated") {
             return;
         }
         let new_name = format!("(Aggregated) {}", self.subject().graph_name());

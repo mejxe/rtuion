@@ -5,9 +5,9 @@ use ratatui::{
     widgets::{Block, BorderType, Borders, Paragraph},
 };
 
-use crate::{settings::Mode, utils::settings_helper_structs::SettingsTabs};
+use crate::{app::App, settings::Mode, utils::settings_helper_structs::SettingsTabs};
 
-use super::{settings_tab::SettingsTab, BLUE, GREEN, YELLOW};
+use super::{app_ui::AppWidget, settings_tab::SettingsTab, BLUE, GREEN, YELLOW};
 #[derive(Clone, Copy)]
 pub struct UISettingsTabData {
     pub selected_setting: u8,
@@ -118,5 +118,26 @@ impl<'a> UIHelper {
         } else {
             Style::default().fg(Color::White)
         }
+    }
+}
+pub struct FooterHint {
+    pub(crate) key: &'static str,
+    pub(crate) hint: &'static str,
+}
+
+impl FooterHint {
+    pub fn new(key: &'static str, hint: &'static str) -> Self {
+        Self { key, hint }
+    }
+}
+pub trait HintProvider {
+    fn provide_hints(&self) -> Vec<FooterHint>;
+}
+impl HintProvider for AppWidget<'_> {
+    fn provide_hints(&self) -> Vec<FooterHint> {
+        vec![
+            FooterHint::new("Tab", "Next tab"),
+            FooterHint::new("Q", "Quit"),
+        ]
     }
 }

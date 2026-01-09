@@ -1,8 +1,15 @@
-use super::{settings_tab::SettingsTab, YELLOW};
+use super::{
+    pomodoro_tab::{self, PomodoroTab},
+    settings_tab::SettingsTab,
+    stats_tab::StatsTab,
+    ui_utils::FooterHint,
+    YELLOW,
+};
 use crate::{
     app::{self, App},
     settings::Mode,
-    stats::pixela::utils,
+    stats::pixela::{pixela_client::PixelaClient, utils},
+    ui::ui_utils::HintProvider,
     utils::tabs,
 };
 use ratatui::{
@@ -14,15 +21,18 @@ use ratatui::{
     widgets::{Block, BorderType, Borders, Paragraph, Tabs, Widget},
     Frame,
 };
+pub struct AppWidget<'a> {
+    app_context: &'a mut App,
+}
 
-impl Widget for &mut App {
+impl Widget for &mut AppWidget<'_> {
     fn render(self, area: ratatui::prelude::Rect, buf: &mut ratatui::prelude::Buffer) {
         let tabs = ["Pomodoro Timer", "Settings", "Stats"];
         let tab_titles: Vec<Span> = tabs
             .iter()
             .map(|t| Span::styled(*t, Style::default().fg(Color::White)))
             .collect();
-        let selected_tab = self.selected_tab();
+        let selected_tab = self.app_context.selected_tab();
 
         let tabs_widget = Tabs::new(tab_titles)
             .block(
@@ -51,38 +61,61 @@ impl Widget for &mut App {
 
         tabs_widget.render(tab_layout[0], buf);
 
-        if let Some(popup) = self.popup_as_mut() {
+        if let Some(popup) = self.app_context.popup_as_mut() {
             popup.render(area, buf);
             return;
         }
         match selected_tab {
-            tabs::Tabs::TimerTab => self.pomodoro().render(layout[1], buf),
-            tabs::Tabs::SettingsTab => SettingsTab::new(
-                &self.get_settings_ref().borrow(),
-                &self.pomodoro().timer,
-                self.pomodoro().pixela_client(),
-            )
-            .render(layout[1], buf),
+            tabs::Tabs::TimerTab => {
+                let pomodoro_tab = PomodoroTab::new(self.app_context.pomodoro());
+                let hints = pomodoro_tab.provide_hints();
+                pomodoro_tab.render(layout[1], buf);
+                self.render_footer(layout[2], buf, hints);
+            }
+            tabs::Tabs::SettingsTab => {
+                let settings_guard = self.app_context.get_settings_ref();
+                let settings = settings_guard.borrow();
+                let timer = &self.app_context.pomodoro().timer;
+                let settings_tab = SettingsTab::new(
+                    &settings,
+                    timer,
+                    self.app_context.pomodoro().pixela_client(),
+                );
+                let hints = settings_tab.provide_hints();
+
+                settings_tab.render(layout[1], buf);
+                self.render_footer(layout[2], buf, hints);
+            }
             tabs::Tabs::StatsTab => {
-                if let Some(stats_client) = self.pomodoro_mut().pixela_client_as_mut() {
-                    stats_client.render(layout[1], buf);
+                let (rendered_stats, hints) = if let Some(stats_client) =
+                    self.app_context.pomodoro_mut().pixela_client_as_mut()
+                {
+                    let mut stats = StatsTab::new(stats_client);
+                    let hints = stats.provide_hints();
+                    stats.render(layout[1], buf);
+                    (true, hints)
                 } else {
+                    (false, self.provide_hints())
+                };
+                if !rendered_stats {
                     self.render_stats(layout[1], buf);
                 }
+                self.render_footer(layout[2], buf, hints);
             }
         }
-        self.render_footer(layout[2], buf);
     }
 }
-impl App {
-    pub fn render_footer(&self, area: Rect, buf: &mut Buffer) {
-        let footer_text = match self.selected_tab() {
-             tabs::Tabs::TimerTab=> "Space: Start/Stop | Tab: Next Tab | Q: Quit",
-            tabs::Tabs::SettingsTab if self.get_settings_ref().borrow().mode() == Mode::Input => "Input Mode On | Esc: Normal Mode",
-            tabs::Tabs::SettingsTab if [4,5].contains( &self.get_settings_ref().borrow().selected_setting )=> "↑↓: Select | Enter: Input Mode | Space: Confirm | Tab: Next Tab | r: Restore Defaults | Q: Quit |" ,
-            tabs::Tabs::SettingsTab => "↑↓: Select | ←→: Adjust Value | Space: Confirm | Tab: Next Tab | r: Restore Defaults | Q: Quit |" ,
-            _ => "Tab: Next Tab | Q: Quit",
-        };
+impl<'a> AppWidget<'a> {
+    pub fn new(app_context: &'a mut App) -> Self {
+        Self { app_context }
+    }
+
+    pub fn render_footer(&self, area: Rect, buf: &mut Buffer, hints: Vec<FooterHint>) {
+        let footer_text = hints
+            .iter()
+            .map(|hint| format!("{}: {}", hint.key, hint.hint))
+            .collect::<Vec<_>>()
+            .join(" | ");
 
         let footer = Paragraph::new(footer_text)
             .alignment(Alignment::Center)

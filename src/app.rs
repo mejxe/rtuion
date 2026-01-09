@@ -4,6 +4,7 @@ use crate::romodoro::Pomodoro;
 use crate::settings::*;
 use crate::stats::pixela::graph::Graph;
 use crate::timers::counters::CounterMode;
+use crate::ui::app_ui::AppWidget;
 use crate::ui::popup::popup_area;
 use crate::utils::tabs::{self, Tabs};
 use arboard::Clipboard;
@@ -89,13 +90,14 @@ impl App {
         });
         self.pomodoro.create_countdown(timer_cancel).await;
 
-        terminal.draw(|frame| self.draw(frame))?;
-        self.popup_size = popup_area(terminal.get_frame().area(), 50, 35);
+        let _ = self.event_tx.send(Event::TerminalEvent).await; // prompt the handler to draw
+
         while !self.exit {
             if let Some(event) = rx.recv().await {
                 self.handle_event(event).await;
             }
-            terminal.draw(|frame| self.draw(frame))?;
+            let mut widget = AppWidget::new(self);
+            terminal.draw(|frame| widget.draw(frame))?;
             self.popup_size = popup_area(terminal.get_frame().area(), 50, 35);
         }
         cancelation_token.cancel();

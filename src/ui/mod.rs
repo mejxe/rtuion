@@ -1,4 +1,5 @@
 pub mod app_ui;
+mod assets;
 pub mod graph;
 pub mod pomodoro_tab;
 pub mod popup;

@@ -90,19 +90,7 @@ impl App {
         };
         let settings_mode = self.settings().borrow().mode();
         match self.selected_tab() {
-            Tabs::TimerTab => {
-                if let KeyCode::Char(' ') = key_event.code {
-                    match self.pomodoro().timer.counter_mode() {
-                        CounterMode::Countdown => self.pomodoro_mut().cycle().await,
-                        CounterMode::Countup => match self.pomodoro().timer.current_state() {
-                            TimerState::Work(_) if self.pomodoro().timer.get_running() => {
-                                self.pomodoro_mut().timer.next_iteration().await
-                            }
-                            _ => self.pomodoro_mut().cycle().await,
-                        },
-                    }
-                }
-            }
+            Tabs::TimerTab => self.handle_timer_tab(key_event).await,
             Tabs::SettingsTab => match settings_mode {
                 Mode::Modify => self.handle_settings_modify(key_event).await,
                 Mode::Input => self.handle_settings_input(key_event).await,

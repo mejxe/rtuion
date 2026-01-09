@@ -6,6 +6,7 @@ use crate::settings::{Mode, Settings, StatsSettings, TimerSettings, UISettings};
 use crate::stats::pixela::pixela_client::PixelaClient;
 use crate::timers::counters::CounterMode;
 use crate::timers::timer::Timer;
+use crate::ui::ui_utils::FooterHint;
 use crate::ui::{BG, BLUE, RED, YELLOW};
 use crate::utils::settings_helper_structs::SettingsTabs;
 use ratatui::buffer::Buffer;
@@ -23,7 +24,7 @@ use ratatui::widgets::Borders;
 use ratatui::widgets::Paragraph;
 use ratatui::widgets::Widget;
 
-use super::ui_utils::{UIHelper, UISettingsTabData};
+use super::ui_utils::{HintProvider, UIHelper, UISettingsTabData};
 use super::GREEN;
 pub struct SettingsTab<'a> {
     settings: &'a Settings,
@@ -616,4 +617,32 @@ fn stats_tab(
     token_label.render(api_key_layout[0], buf);
     token_value.render(api_key_layout[1], buf);
     outer
+}
+impl HintProvider for SettingsTab<'_> {
+    fn provide_hints(&self) -> Vec<super::ui_utils::FooterHint> {
+        let mut default = vec![
+            FooterHint::new("Space", "Apply Settings"),
+            FooterHint::new("R", "Restore defaults"),
+        ];
+        let mut modify = vec![
+            FooterHint::new("<>", "Change Value"),
+            FooterHint::new("↑↓", "Select Settings"),
+        ];
+        let mut normal = vec![
+            FooterHint::new("<>", "Change tab"),
+            FooterHint::new("RET", "Select tab"),
+        ];
+
+        match self.settings.selected_setting {
+            1 | 2 => modify.push(FooterHint::new("RET", "Input Mode")),
+            _ => {}
+        };
+        let mut input = vec![FooterHint::new("RET", "Normal Mode")];
+        default.append(match self.settings.mode() {
+            Mode::Input => &mut input,
+            Mode::Modify => &mut modify,
+            Mode::Normal => &mut normal,
+        });
+        default
+    }
 }

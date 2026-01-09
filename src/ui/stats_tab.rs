@@ -1,6 +1,7 @@
 use crate::stats::pixel::Pixel;
-use crate::stats::pixela::pixela_client::PixelaClient;
+use crate::stats::pixela::pixela_client::{PixelaClient, PixelaTabs};
 use crate::stats::pixela::subjects::Subject;
+use crate::ui::ui_utils::FooterHint;
 use crate::ui::{BG, BLUE, GREEN, RED, YELLOW};
 use ratatui::buffer::Buffer;
 use ratatui::layout::Constraint;
@@ -17,8 +18,13 @@ use ratatui::widgets::{Block, List};
 use ratatui::widgets::{BorderType, HighlightSpacing};
 use ratatui::widgets::{Borders, ListItem};
 use ratatui::widgets::{Paragraph, StatefulWidget};
+
+use super::ui_utils::HintProvider;
 const SELECTED_STYLE: Style = Style::new().bg(SLATE.c800).add_modifier(Modifier::BOLD);
-impl Widget for &mut PixelaClient {
+pub struct StatsTab<'a> {
+    pixela_client: &'a mut PixelaClient,
+}
+impl Widget for &mut StatsTab<'_> {
     fn render(self, area: Rect, buf: &mut Buffer) {
         let main_layout = Layout::default()
             .direction(Direction::Vertical)
@@ -63,12 +69,15 @@ impl Widget for &mut PixelaClient {
     }
 }
 
-impl PixelaClient {
+impl<'a> StatsTab<'a> {
+    pub fn new(pixela_client: &'a mut PixelaClient) -> Self {
+        Self { pixela_client }
+    }
+
     fn render_pixels(&mut self, area: Rect, buf: &mut Buffer) {
-        let border_type = if self.focused_pane() == 0 {
-            BorderType::Double
-        } else {
-            BorderType::Rounded
+        let border_type = match self.pixela_client.focused_pane() == PixelaTabs::Pixels {
+            true => BorderType::Double,
+            false => BorderType::Rounded,
         };
         let block = Block::default()
             .title(" Pixels ")
@@ -78,7 +87,7 @@ impl PixelaClient {
 
         let inner_area = block.inner(area);
 
-        if self.pixels.is_empty() {
+        if self.pixela_client.pixels.is_empty() {
             block.render(area, buf);
             let no_pixels_text = Paragraph::new("No pixels saved")
                 .alignment(Alignment::Center)
@@ -86,20 +95,23 @@ impl PixelaClient {
                 .bold();
             no_pixels_text.render(inner_area, buf);
         } else {
-            if self.focused_pane() == 0 && self.pixels.state().selected().is_none() {
-                self.pixels.state_mut().select_first();
-            } else if self.focused_pane() != 0 {
-                self.pixels.state_mut().select(None);
+            if self.pixela_client.focused_pane() == PixelaTabs::Pixels
+                && self.pixela_client.pixels.state().selected().is_none()
+            {
+                self.pixela_client.pixels.state_mut().select_first();
+            } else if self.pixela_client.focused_pane() != PixelaTabs::Pixels {
+                self.pixela_client.pixels.state_mut().select(None);
             }
 
             let list = List::new(
-                self.pixels
+                self.pixela_client
+                    .pixels
                     .iter()
                     .enumerate()
                     .map(|(index, pix)| {
                         PixelToListWrapper {
                             pixel: pix,
-                            selected: self.selected_to_send(index),
+                            selected: self.pixela_client.selected_to_send(index),
                         }
                         .into()
                     })
@@ -109,20 +121,15 @@ impl PixelaClient {
             .highlight_style(SELECTED_STYLE)
             .highlight_symbol(">")
             .highlight_spacing(HighlightSpacing::Always);
-            StatefulWidget::render(list, area, buf, self.pixels.state_mut());
+            StatefulWidget::render(list, area, buf, self.pixela_client.pixels.state_mut());
         }
     }
 
     fn render_sync(&self, area: Rect, buf: &mut Buffer) {
-        let border_type = if self.focused_pane() == 1 {
-            BorderType::Double
-        } else {
-            BorderType::Rounded
-        };
         let block = Block::default()
             .title(" Sync ")
             .borders(Borders::ALL)
-            .border_type(border_type)
+            .border_type(BorderType::Rounded)
             .border_style(Style::default().fg(GREEN));
 
         let inner_area = block.inner(area);
@@ -136,13 +143,19 @@ impl PixelaClient {
             ])
             .split(inner_area);
 
-        let (status, message) = match self.logged_in() {
+        let (status, message) = match self.pixela_client.logged_in() {
             false => (
                 "Status: Not Logged In to Pixela".into(),
-                format!("Press 'L' to sync account ({})", self.user.username()),
+                format!(
+                    "Press 'L' to sync account ({})",
+                    self.pixela_client.user.username()
+                ),
             ),
             true => (
-                format!("Status: Logged in as {}", self.user.username()),
+                format!(
+                    "Status: Logged in as {}",
+                    self.pixela_client.user.username()
+                ),
                 "You can use complex stats tracking for this session!".into(),
             ),
         };
@@ -160,7 +173,7 @@ impl PixelaClient {
     }
 
     fn render_subjects(&mut self, area: Rect, buf: &mut Buffer) {
-        let border_type = if self.focused_pane() == 2 {
+        let border_type = if self.pixela_client.focused_pane() == PixelaTabs::Subject {
             BorderType::Double
         } else {
             BorderType::Rounded
@@ -173,25 +186,28 @@ impl PixelaClient {
 
         let inner_area = block.inner(area);
 
-        if self.subjects().len() < 2 {
+        if self.pixela_client.subjects().len() < 2 {
             block.render(area, buf);
             let no_subjects_text = Paragraph::new("Subjects appear after logging in...")
                 .alignment(Alignment::Center)
                 .style(Style::default().fg(Color::Gray));
             no_subjects_text.render(inner_area, buf);
         } else {
-            if self.focused_pane() == 2 && self.subjects.state().selected().is_none() {
-                self.subjects.state_mut().select_first();
-            } else if self.focused_pane() != 2 {
-                self.subjects.state_mut().select(None);
+            if self.pixela_client.focused_pane() == PixelaTabs::Subject
+                && self.pixela_client.subjects.state().selected().is_none()
+            {
+                self.pixela_client.subjects.state_mut().select_first();
+            } else if self.pixela_client.focused_pane() != PixelaTabs::Subject {
+                self.pixela_client.subjects.state_mut().select(None);
             }
             let list = List::new(
-                self.subjects()
+                self.pixela_client
+                    .subjects()
                     .iter()
                     .map(|subject| {
                         SubjectToListWrapper {
                             subject,
-                            selected: self.get_subject(0).unwrap() == **subject,
+                            selected: self.pixela_client.get_subject(0).unwrap() == **subject,
                         }
                         .into()
                     })
@@ -201,7 +217,7 @@ impl PixelaClient {
             .highlight_style(SELECTED_STYLE)
             .highlight_symbol(">")
             .highlight_spacing(HighlightSpacing::Always);
-            StatefulWidget::render(list, area, buf, self.subjects.state_mut());
+            StatefulWidget::render(list, area, buf, self.pixela_client.subjects.state_mut());
         }
     }
 
@@ -215,7 +231,7 @@ impl PixelaClient {
         let inner_area = block.inner(area);
         block.render(area, buf);
 
-        if let Some(g) = self.current_graph() {
+        if let Some(g) = self.pixela_client.current_graph() {
             g.render(inner_area, buf);
         } else {
             let placeholder_text = Paragraph::new("Press G to render a graph.")
@@ -281,5 +297,38 @@ impl From<SubjectToListWrapper<'_>> for ListItem<'_> {
             false => Line::styled(subject_text.to_string(), Style::default().fg(Color::White)),
         };
         ListItem::new(line)
+    }
+}
+
+impl HintProvider for StatsTab<'_> {
+    fn provide_hints(&self) -> Vec<FooterHint> {
+        let mut default = vec![
+            FooterHint::new("<>", "Change Tabs"),
+            FooterHint::new("↑↓", "Select"),
+        ];
+        let mut based_on_state = match self.pixela_client.focused_pane() {
+            PixelaTabs::Pixels => {
+                let mut basic = vec![FooterHint::new("Space|RET", "Select Pixel(s)")];
+                if !self.pixela_client.get_selected_pixels().is_empty() {
+                    basic.append(&mut vec![
+                        FooterHint::new("P", "Push to Pixela"),
+                        FooterHint::new("d", "Delete pixel"),
+                    ]);
+                };
+                basic
+            }
+            PixelaTabs::Subject => {
+                if !self.pixela_client.subjects.is_empty() {
+                    vec![
+                        FooterHint::new("G", "Render graph"),
+                        FooterHint::new("Space", "Track"),
+                    ]
+                } else {
+                    vec![]
+                }
+            }
+        };
+        default.append(&mut based_on_state);
+        default
     }
 }

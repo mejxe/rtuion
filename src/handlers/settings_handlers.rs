@@ -35,12 +35,6 @@ impl App {
             KeyCode::Left | KeyCode::Char('h') => self.settings().borrow_mut().tab_left(),
             KeyCode::Char('R') => self.settings().borrow_mut().restore_defaults(),
             KeyCode::Char(' ') => self.update_settings().await,
-            KeyCode::Char('r') => {
-                self.set_popup(Popup::yes_no(
-                    "Do you want to reset your timer?".to_string(),
-                    Box::new(App::ask_restart_timer),
-                ));
-            }
             KeyCode::Enter => {
                 self.settings().borrow_mut().change_mode(Mode::Modify);
                 self.settings().borrow_mut().selected_setting = 0
@@ -68,8 +62,5 @@ impl App {
                 self.settings().borrow_mut().input(key_event, text);
             }
         }
-    }
-    fn ask_restart_timer(&mut self) {
-        let _ = self.event_tx().try_send(Event::RestartTimer);
     }
 }

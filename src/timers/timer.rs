@@ -284,6 +284,12 @@ impl Timer {
     pub fn counter_mode(&self) -> CounterMode {
         self.counter_mode
     }
+    pub fn in_work_state(&self) -> bool {
+        if let TimerState::Work(_) = self.current_state() {
+            return true;
+        }
+        return false;
+    }
 }
 #[cfg(test)]
 mod tests {}

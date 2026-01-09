@@ -3,6 +3,7 @@ use std::rc::Rc;
 
 use crate::timers::counters::CounterMode;
 use crate::timers::helper_structs::TimerState;
+use crate::ui::assets::{ASCII_NUMBERS, BIG_ANIMATION_FRAMES};
 use crate::ui::{BG, BLUE, GREEN, RED, YELLOW};
 use ratatui::layout::Direction;
 use ratatui::layout::Layout;
@@ -21,19 +22,23 @@ use ratatui::widgets::{Block, Padding};
 
 use crate::romodoro::Pomodoro;
 
-use super::ui_utils::UIHelper;
+use super::ui_utils::{FooterHint, HintProvider, UIHelper};
 
-impl Widget for &Pomodoro {
+pub struct PomodoroTab<'a> {
+    pomodoro: &'a Pomodoro,
+}
+impl Widget for PomodoroTab<'_> {
     fn render(self, area: ratatui::prelude::Rect, buf: &mut ratatui::prelude::Buffer) {
-        let time = self.timer.time_left();
-        let now_text = format!("Now: {}", self.timer.current_state());
+        let time = self.pomodoro.timer.time_left();
+        let now_text = format!("Now: {}", self.pomodoro.timer.current_state());
         let hide_countdown = self
+            .pomodoro
             .get_setting_ref()
             .borrow()
             .ui_settings
             .hide_work_countdown;
 
-        let main_title = match self.timer.counter_mode() {
+        let main_title = match self.pomodoro.timer.counter_mode() {
             CounterMode::Countup => " Flowmodoro Timer ",
             CounterMode::Countdown => " Pomodoro Timer ",
         };
@@ -43,14 +48,14 @@ impl Widget for &Pomodoro {
             .border_type(BorderType::Rounded)
             .style(Style::default().fg(YELLOW)); // Gruvbox yellow for border
 
-        let color = match self.timer.current_state() {
+        let color = match self.pomodoro.timer.current_state() {
             TimerState::Work(_) => BLUE,
             TimerState::Break(_) => GREEN,
         };
         let (timer_style, text_of_timer, animation_style, animation_text) = match hide_countdown {
             true => (
                 Style::default().fg(color),
-                ascii_animation(&BIG_ANIMATION_FRAMES, self.timer.time_left()),
+                ascii_animation(&BIG_ANIMATION_FRAMES, self.pomodoro.timer.time_left()),
                 Style::default().fg(color),
                 format!(
                     "{:02}:{:02}:{:02}",
@@ -80,7 +85,7 @@ impl Widget for &Pomodoro {
             .alignment(Alignment::Center);
 
         // Style the state indicator based on current state
-        let now_paragraph_style = match self.timer.current_state() {
+        let now_paragraph_style = match self.pomodoro.timer.current_state() {
             TimerState::Work(_) => Style::default().fg(BLUE),
             TimerState::Break(_) => Style::default().fg(GREEN),
         };
@@ -122,6 +127,7 @@ impl Widget for &Pomodoro {
             .flex(ratatui::layout::Flex::Center)
             .split(outer_block.inner(area));
         let layout = match self
+            .pomodoro
             .get_setting_ref()
             .borrow()
             .ui_settings
@@ -145,25 +151,29 @@ impl Widget for &Pomodoro {
         } else {
             5
         };
-        match self.timer.counter_mode() {
+        match self.pomodoro.timer.counter_mode() {
             CounterMode::Countdown => self.render_pomodoro_ui(layout[layout_spot], buf),
             CounterMode::Countup => self.render_flowmodoro_ui(layout[layout_spot], buf),
         }
     }
 }
-impl Pomodoro {
+impl<'a> PomodoroTab<'a> {
+    pub fn new(pomodoro: &'a Pomodoro) -> Self {
+        Self { pomodoro }
+    }
+
     fn render_subject_select(
         &self,
         area: ratatui::prelude::Rect,
         buf: &mut ratatui::prelude::Buffer,
     ) {
-        let subject = self.get_current_subject();
+        let subject = self.pomodoro.get_current_subject();
         let subject_name: String = match &subject {
             Some(subject) => subject.graph_name().to_string(),
             None => "No subjects".into(),
         };
         let style = match &subject {
-            Some(sub) if self.timer.timer_started() | sub.is_dummy() => {
+            Some(sub) if self.pomodoro.timer.timer_started() | sub.is_dummy() => {
                 Style::default().fg(Color::Gray)
             }
             Some(_) => Style::default().fg(YELLOW),
@@ -195,17 +205,17 @@ impl Pomodoro {
         .flex(Flex::Center)
         .split(outer_block.inner(outer_layout[0]));
         outer_block.render(outer_layout[0], buf);
-        let time = self.timer.total_elapsed();
+        let time = self.pomodoro.timer.total_elapsed();
         let worked_for = format!(
             "{:02} hours, {:02} minutes, {:02} second(s)",
             time / 3600,
             (time % 3600) / 60,
             time % 60
         );
-        let break_time = if let TimerState::Break(_) = self.timer.current_state() {
+        let break_time = if let TimerState::Break(_) = self.pomodoro.timer.current_state() {
             0
         } else {
-            self.timer.break_time()
+            self.pomodoro.timer.break_time()
         };
         let next_break_time = UIHelper::create_settings_paragraph(
             &format!("Next break time length: {break_time} second(s) "),
@@ -215,7 +225,7 @@ impl Pomodoro {
         let already_worked_for =
             UIHelper::create_settings_paragraph(&format!("Already worked for: {worked_for}"), None)
                 .left_aligned();
-        let breaks_taken_num = self.timer.iteration().saturating_sub(1);
+        let breaks_taken_num = self.pomodoro.timer.iteration().saturating_sub(1);
         let breaks_taken =
             UIHelper::create_settings_paragraph(&format!("Breaks taken: {breaks_taken_num}"), None)
                 .left_aligned();
@@ -224,13 +234,13 @@ impl Pomodoro {
         breaks_taken.render(inside_layout[2], buf);
     }
     fn render_pomodoro_ui(&self, area: ratatui::prelude::Rect, buf: &mut ratatui::prelude::Buffer) {
-        let total_time = self.timer.total_time();
-        let elapsed_time = self.timer.total_elapsed();
+        let total_time = self.pomodoro.timer.total_time();
+        let elapsed_time = self.pomodoro.timer.total_elapsed();
         let progress = (elapsed_time) as f64 / total_time as f64;
         let iterations_text = format!(
             "{}/{} iterations",
-            self.timer.iteration(),
-            self.timer.total_iterations()
+            self.pomodoro.timer.iteration(),
+            self.pomodoro.timer.total_iterations()
         );
         let pomodoro_layout = Layout::vertical(vec![
             Constraint::Length(1),
@@ -244,7 +254,7 @@ impl Pomodoro {
             Some(Style::default().fg(BLUE).bold()),
         );
 
-        let gauge_style = match self.timer.current_state() {
+        let gauge_style = match self.pomodoro.timer.current_state() {
             TimerState::Work(_) => BLUE,
             TimerState::Break(_) => GREEN,
         };
@@ -285,247 +295,28 @@ fn format_ascii_time(input: &str) -> String {
         let ascii_lines: Vec<&str> = ASCII_NUMBERS[index].lines().collect();
 
         for (i, line) in ascii_lines.iter().enumerate() {
-            output[i].push_str(line);
+            output[i].push_str(&format!("{:<7}", line));
             output[i].push_str("  ");
         }
     }
 
     output.join("\n")
 }
+impl HintProvider for PomodoroTab<'_> {
+    fn provide_hints(&self) -> Vec<FooterHint> {
+        let mut def = vec![FooterHint::new("r", "Reset timer")];
 
-pub const ASCII_NUMBERS: [&str; 11] = [
-    r#"  ███  
- █   █ 
-█     █
-█     █
-█     █
- █   █ 
-  ███  "#,
-    r#"   █   
-  ██   
- █ █   
-   █   
-   █   
-   █   
- ████  "#,
-    r#" ███   
-█   █  
-    █  
-   █   
-  █    
- █     
-█████  "#,
-    r#" ███   
-█   █  
-    █  
-  ██   
-    █  
-█   █  
- ███   "#,
-    r#"   ██  
-  █ █  
- █  █  
-█   █  
-█████  
-    █  
-    █  "#,
-    r#"█████  
-█      
-████   
-    █  
-    █  
-█   █  
- ███   "#,
-    r#"  ███  
- █     
-█      
-█ ███  
-█    █ 
- █   █ 
-  ███  "#,
-    r#"█████  
-    █  
-   █   
-  █    
- █     
- █     
- █     "#,
-    r#"  ███  
- █   █ 
- █   █ 
-  ███  
- █   █ 
- █   █ 
-  ███  "#,
-    r#"  ███  
- █   █ 
- █   █ 
-  ████ 
-     █ 
-    ██ 
-  ███  "#,
-    r#"       
-   █   
-   █   
-       
-   █   
-   █   
-       "#,
-];
-pub const BIG_ANIMATION_FRAMES: [&str; 10] = [
-    r#"           ▄▄████▄▄      ░░░░        ▄▄████▄▄           
-         ▄██████████▄              ▄██████████▄         
-       ▄▄██████████████▄▄        ▄▄██████████████▄▄     
-      ▄▄████████████████████▄▄  ▄▄████████████████████▄▄   
-    ████████████████████████████████████████████████████████
-    ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
-    ████████████            ████████████            ████████
-    ▒▒▒▒▒▒▒▒      ▒▒▒▒▒▒▒▒      ▒▒▒▒▒▒▒▒      ▒▒▒▒▒▒▒▒      
-    ░░░░      ░░░░░░░░      ░░░░░░░░      ░░░░░░░░      ░░░░
-          .................................................."#,
-    r#"           ▄▄████▄▄       ░░░░       ▄▄████▄▄           
-         ▄██████████▄              ▄██████████▄         
-       ▄▄██████████████▄▄        ▄▄██████████████▄▄     
-      ▄▄████████████████████▄▄  ▄▄████████████████████▄▄   
-    ████████████████████████████████████████████████████████
-    ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
-      ████████████            ████████████            ██████
-      ▒▒▒▒▒▒▒▒      ▒▒▒▒▒▒▒▒      ▒▒▒▒▒▒▒▒      ▒▒▒▒▒▒▒▒    
-    ░░░░░░      ░░░░░░░░      ░░░░░░░░      ░░░░░░░░      ░░
-    ..      ................................................"#,
-    r#"           ▄▄████▄▄        ░░░░      ▄▄████▄▄           
-         ▄██████████▄              ▄██████████▄         
-       ▄▄██████████████▄▄        ▄▄██████████████▄▄     
-      ▄▄████████████████████▄▄  ▄▄████████████████████▄▄   
-    ████████████████████████████████████████████████████████
-    ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
-        ████████████            ████████████            ████
-        ▒▒▒▒▒▒▒▒      ▒▒▒▒▒▒▒▒      ▒▒▒▒▒▒▒▒      ▒▒▒▒▒▒▒▒  
-    ░░░░░░░░      ░░░░░░░░      ░░░░░░░░      ░░░░░░░░      
-    ....      .............................................."#,
-    r#"           ▄▄████▄▄         ░░░░     ▄▄████▄▄           
-         ▄██████████▄              ▄██████████▄         
-       ▄▄██████████████▄▄        ▄▄██████████████▄▄     
-      ▄▄████████████████████▄▄  ▄▄████████████████████▄▄   
-    ████████████████████████████████████████████████████████
-    ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
-          ████████████            ████████████            ██
-    ▒▒      ▒▒▒▒▒▒▒▒      ▒▒▒▒▒▒▒▒      ▒▒▒▒▒▒▒▒      ▒▒▒▒▒▒
-      ░░░░░░░░      ░░░░░░░░      ░░░░░░░░      ░░░░░░░░    
-    ......      ............................................"#,
-    r#"           ▄▄████▄▄          ░░░░    ▄▄████▄▄           
-         ▄██████████▄              ▄██████████▄         
-       ▄▄██████████████▄▄        ▄▄██████████████▄▄     
-      ▄▄████████████████████▄▄  ▄▄████████████████████▄▄   
-    ████████████████████████████████████████████████████████
-    ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
-            ████████████            ████████████            
-    ▒▒▒▒      ▒▒▒▒▒▒▒▒      ▒▒▒▒▒▒▒▒      ▒▒▒▒▒▒▒▒      ▒▒▒▒
-        ░░░░░░░░      ░░░░░░░░      ░░░░░░░░      ░░░░░░░░  
-    ........      .........................................."#,
-    r#"           ▄▄████▄▄         ░░░░     ▄▄████▄▄           
-         ▄██████████▄              ▄██████████▄         
-       ▄▄██████████████▄▄        ▄▄██████████████▄▄     
-      ▄▄████████████████████▄▄  ▄▄████████████████████▄▄   
-    ████████████████████████████████████████████████████████
-    ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
-    ██            ████████████            ████████████      
-    ▒▒▒▒▒▒      ▒▒▒▒▒▒▒▒      ▒▒▒▒▒▒▒▒      ▒▒▒▒▒▒▒▒      ▒▒
-      ░░░░░░░░      ░░░░░░░░      ░░░░░░░░      ░░░░░░░░    
-    ..........      ........................................"#,
-    r#"           ▄▄████▄▄        ░░░░      ▄▄████▄▄           
-         ▄██████████▄              ▄██████████▄         
-       ▄▄██████████████▄▄        ▄▄██████████████▄▄     
-      ▄▄████████████████████▄▄  ▄▄████████████████████▄▄   
-    ████████████████████████████████████████████████████████
-    ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
-    ████            ████████████            ████████████    
-    ▒▒▒▒▒▒▒▒      ▒▒▒▒▒▒▒▒      ▒▒▒▒▒▒▒▒      ▒▒▒▒▒▒▒▒      
-        ░░░░░░░░      ░░░░░░░░      ░░░░░░░░      ░░░░░░░░  
-    ............      ......................................"#,
-    r#"           ▄▄████▄▄       ░░░░       ▄▄████▄▄           
-         ▄██████████▄              ▄██████████▄         
-       ▄▄██████████████▄▄        ▄▄██████████████▄▄     
-      ▄▄████████████████████▄▄  ▄▄████████████████████▄▄   
-    ████████████████████████████████████████████████████████
-    ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
-    ██████            ████████████            ████████████  
-      ▒▒▒▒▒▒▒▒      ▒▒▒▒▒▒▒▒      ▒▒▒▒▒▒▒▒      ▒▒▒▒▒▒▒▒    
-    ░░      ░░░░░░░░      ░░░░░░░░      ░░░░░░░░      ░░░░░░
-    ..............      ...................................."#,
-    r#"           ▄▄████▄▄      ░░░░        ▄▄████▄▄           
-         ▄██████████▄              ▄██████████▄         
-       ▄▄██████████████▄▄        ▄▄██████████████▄▄     
-      ▄▄████████████████████▄▄  ▄▄████████████████████▄▄   
-    ████████████████████████████████████████████████████████
-    ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
-    ████████            ████████████            ████████████
-        ▒▒▒▒▒▒▒▒      ▒▒▒▒▒▒▒▒      ▒▒▒▒▒▒▒▒      ▒▒▒▒▒▒▒▒  
-    ░░░░      ░░░░░░░░      ░░░░░░░░      ░░░░░░░░      ░░░░
-    ................      .................................."#,
-    r#"           ▄▄████▄▄       ░░░░       ▄▄████▄▄           
-         ▄██████████▄              ▄██████████▄         
-       ▄▄██████████████▄▄        ▄▄██████████████▄▄     
-      ▄▄████████████████████▄▄  ▄▄████████████████████▄▄   
-    ████████████████████████████████████████████████████████
-    ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
-    ██████████            ████████████            ██████████
-    ▒▒      ▒▒▒▒▒▒▒▒      ▒▒▒▒▒▒▒▒      ▒▒▒▒▒▒▒▒      ▒▒▒▒▒▒
-    ░░░░░░      ░░░░░░░░      ░░░░░░░░      ░░░░░░░░      ░░
-    ..................      ................................"#,
-];
-pub const SMALL_ANIMATION_FRAMES: [&str; 10] = [
-    r#"       ░░▒▒░░              ░░▒▒░░              ░░▒▒░░       
-     ░░▒▒▓▓▒▒░░          ░░▒▒▓▓▒▒░░          ░░▒▒▓▓▒▒░░     
-   ░░▒▒▓▓██▓▓▒▒░░      ░░▒▒▓▓██▓▓▒▒░░      ░░▒▒▓▓██▓▓▒▒░░   
-           ▄▄████▄▄                    ▄▄██████▄▄           
-████████████████████████████████████████████████████████████"#,
-    r#"     ░░▒▒░░              ░░▒▒░░              ░░▒▒░░         
-   ░░▒▒▓▓▒▒░░          ░░▒▒▓▓▒▒░░          ░░▒▒▓▓▒▒░░       
- ░░▒▒▓▓██▓▓▒▒░░      ░░▒▒▓▓██▓▓▒▒░░      ░░▒▒▓▓██▓▓▒▒░░     
-           ▄▄████▄▄                    ▄▄██████▄▄           
-████████████████████████████████████████████████████████████"#,
-    r#"   ░░▒▒░░              ░░▒▒░░              ░░▒▒░░           
- ░░▒▒▓▓▒▒░░          ░░▒▒▓▓▒▒░░          ░░▒▒▓▓▒▒░░         
-▒▒▓▓██▓▓▒▒░░      ░░▒▒▓▓██▓▓▒▒░░      ░░▒▒▓▓██▓▓▒▒░░      ░░
-           ▄▄████▄▄                    ▄▄██████▄▄           
-████████████████████████████████████████████████████████████"#,
-    r#" ░░▒▒░░              ░░▒▒░░              ░░▒▒░░             
-▒▒▓▓▒▒░░          ░░▒▒▓▓▒▒░░          ░░▒▒▓▓▒▒░░          ░░
-▓▓██▓▓▒▒░░      ░░▒▒▓▓██▓▓▒▒░░      ░░▒▒▓▓██▓▓▒▒░░      ░░▒▒
-           ▄▄████▄▄                    ▄▄██████▄▄           
-████████████████████████████████████████████████████████████"#,
-    r#"▒▒░░              ░░▒▒░░              ░░▒▒░░              ░░
-▓▓▒▒░░          ░░▒▒▓▓▒▒░░          ░░▒▒▓▓▒▒░░          ░░▒▒
-██▓▓▒▒░░      ░░▒▒▓▓██▓▓▒▒░░      ░░▒▒▓▓██▓▓▒▒░░      ░░▒▒▓▓
-           ▄▄████▄▄                    ▄▄██████▄▄           
-████████████████████████████████████████████████████████████"#,
-    r#"░░              ░░▒▒░░              ░░▒▒░░              ░░▒▒
-▒▒░░          ░░▒▒▓▓▒▒░░          ░░▒▒▓▓▒▒░░          ░░▒▒▓▓
-▓▓▒▒░░      ░░▒▒▓▓██▓▓▒▒░░      ░░▒▒▓▓██▓▓▒▒░░      ░░▒▒▓▓██
-           ▄▄████▄▄                    ▄▄██████▄▄           
-████████████████████████████████████████████████████████████"#,
-    r#"              ░░▒▒░░              ░░▒▒░░              ░░▒▒░░
-░░          ░░▒▒▓▓▒▒░░          ░░▒▒▓▓▒▒░░          ░░▒▒▓▓▒▒
-▒▒░░      ░░▒▒▓▓██▓▓▒▒░░      ░░▒▒▓▓██▓▓▒▒░░      ░░▒▒▓▓██▓▓
-           ▄▄████▄▄                    ▄▄██████▄▄           
-████████████████████████████████████████████████████████████"#,
-    r#"            ░░▒▒░░              ░░▒▒░░              ░░▒▒░░  
-          ░░▒▒▓▓▒▒░░          ░░▒▒▓▓▒▒░░          ░░▒▒▓▓▒▒░░
-░░      ░░▒▒▓▓██▓▓▒▒░░      ░░▒▒▓▓██▓▓▒▒░░      ░░▒▒▓▓██▓▓▒▒
-           ▄▄████▄▄                    ▄▄██████▄▄           
-████████████████████████████████████████████████████████████"#,
-    r#"          ░░▒▒░░              ░░▒▒░░              ░░▒▒░░    
-        ░░▒▒▓▓▒▒░░          ░░▒▒▓▓▒▒░░          ░░▒▒▓▓▒▒░░  
-      ░░▒▒▓▓██▓▓▒▒░░      ░░▒▒▓▓██▓▓▒▒░░      ░░▒▒▓▓██▓▓▒▒░░
-           ▄▄████▄▄                    ▄▄██████▄▄           
-████████████████████████████████████████████████████████████"#,
-    r#"        ░░▒▒░░              ░░▒▒░░              ░░▒▒░░      
-      ░░▒▒▓▓▒▒░░          ░░▒▒▓▓▒▒░░          ░░▒▒▓▓▒▒░░    
-    ░░▒▒▓▓██▓▓▒▒░░      ░░▒▒▓▓██▓▓▒▒░░      ░░▒▒▓▓██▓▓▒▒░░  
-           ▄▄████▄▄                    ▄▄██████▄▄           
-████████████████████████████████████████████████████████████"#,
-];
+        let mut state_dependent = match self.pomodoro.timer.counter_mode() {
+            CounterMode::Countup if self.pomodoro.timer.in_work_state() => vec![
+                FooterHint::new("Space", "Cycle"),
+                FooterHint::new("x", "Start Break"),
+            ],
+            _ => vec![FooterHint::new("Space", "Cycle")],
+        };
+        state_dependent.append(&mut def);
+        state_dependent
+    }
+}
 
 #[cfg(test)]
 mod test {

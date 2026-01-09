@@ -1,3 +1,5 @@
+use std::process::exit;
+
 use crate::error::{PixelaResponseError, Result, StatsError};
 
 use super::{
@@ -53,10 +55,12 @@ pub async fn send_to_pixela(
     client: &reqwest::Client,
     api_key: &str,
 ) -> Result<()> {
+    let subject_url = pixel.subject().url();
+    let date = pixel.date_pixela_formatted();
+    let url = format!("{subject_url}/{date}/add");
     let request = client
-        .post(pixel.subject().url())
+        .put(url)
         .json(&serde_json::json!({
-        "date":pixel.date_pixela_formatted(),
         "quantity":pixel.progress().to_string()
             }))
         .header("X-USER-TOKEN", api_key)

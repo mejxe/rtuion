@@ -5,6 +5,7 @@ use crate::{
     error::Error,
     popup::Popup,
     settings::PomodoroSettings,
+    stats::pixela::pixela_client::PixelaTabs,
 };
 
 impl App {
@@ -19,7 +20,7 @@ impl App {
                 KeyCode::Left | KeyCode::Char('h') => pixela_client.change_focused_pane(false),
                 KeyCode::Down | KeyCode::Char('j') => pixela_client.select_next(),
                 KeyCode::Up | KeyCode::Char('k') => pixela_client.select_previous(),
-                KeyCode::Char(' ') if pixela_client.focused_pane() == 2 => {
+                KeyCode::Char(' ') if pixela_client.focused_pane() == PixelaTabs::Subject => {
                     if let Some(index) = pixela_client.subjects.state().selected() {
                         if !self.pomodoro().is_duration_saved() {
                             self.set_popup(Popup::yes_no(
@@ -43,7 +44,9 @@ impl App {
                 KeyCode::Char('G') => {
                     let _ = self.event_tx().send(Event::RequestGraph).await;
                 }
-                KeyCode::Char(' ') | KeyCode::Enter if pixela_client.focused_pane() == 0 => {
+                KeyCode::Char(' ') | KeyCode::Enter
+                    if pixela_client.focused_pane() == PixelaTabs::Pixels =>
+                {
                     if let Some(index) = pixela_client.pixels.state().selected() {
                         if pixela_client.selected_to_send(index) {
                             pixela_client.unselect_pixel(index);
@@ -53,7 +56,7 @@ impl App {
                     }
                 }
                 KeyCode::Char('P')
-                    if (pixela_client.focused_pane() == 0
+                    if (pixela_client.focused_pane() == PixelaTabs::Pixels
                         && !pixela_client.pixels_to_send_is_empty()
                         && pixela_client.logged_in) =>
                 {
@@ -64,7 +67,7 @@ impl App {
                         pixels,
                     ));
                 }
-                KeyCode::Char('d') if pixela_client.focused_pane() == 0 => {
+                KeyCode::Char('d') if pixela_client.focused_pane() == PixelaTabs::Pixels => {
                     self.set_popup(Popup::yes_no(
                         "This pixel will be deleted, you sure?".into(),
                         Box::new(App::ask_delete_pixel),

@@ -18,6 +18,25 @@ use super::{
     subjects::{Progress, Subject},
     utils::StatefulList,
 };
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub enum PixelaTabs {
+    Pixels,
+    Subject,
+}
+impl PixelaTabs {
+    fn right(&mut self) {
+        *self = match self {
+            PixelaTabs::Pixels => PixelaTabs::Subject,
+            PixelaTabs::Subject => PixelaTabs::Subject,
+        };
+    }
+    fn left(&mut self) {
+        *self = match self {
+            PixelaTabs::Pixels => PixelaTabs::Pixels,
+            PixelaTabs::Subject => PixelaTabs::Pixels,
+        };
+    }
+}
 
 #[derive(Debug)]
 pub struct PixelaClient {
@@ -26,7 +45,7 @@ pub struct PixelaClient {
     pub pixels: StatefulList<Pixel>,
     pub subjects: StatefulList<Subject>,
     pub logged_in: bool,
-    focused_pane: u8, // 0:pixels; 1:user; 2:subjects
+    focused_pane: PixelaTabs,
     pixels_to_send: Vec<usize>,
     current_subject_index: usize,
     current_graph: Option<Graph>,
@@ -54,7 +73,7 @@ impl PixelaClient {
             user,
             subjects,
             logged_in: false,
-            focused_pane: 1,
+            focused_pane: PixelaTabs::Subject,
             pixels_to_send: vec![0; 2 * pixel_len],
             current_subject_index: 0,
             current_graph: None,
@@ -83,11 +102,8 @@ impl PixelaClient {
         if index > self.pixels_to_send.len() - 1 {
             self.update_pixels_to_send_size();
         }
-        if let Some(pixel) = self.pixels().get(index) {
-            match pixel {
-                Pixel::Simple(_) => self.pixels_to_send[index] = 2,
-                Pixel::Complex(_) => self.pixels_to_send[index] = 1,
-            }
+        if let Some(Pixel::Complex(_)) = self.pixels().get(index) {
+            self.pixels_to_send[index] = 1
         }
     }
     pub fn unselect_pixel(&mut self, elem: usize) {
@@ -194,7 +210,7 @@ impl PixelaClient {
         Ok(resolved_pixels)
     }
     pub async fn send_pixels(&mut self) -> Result<Vec<Pixel>> {
-        let pixel_pool = self.get_and_increment_pixels().await?;
+        let pixel_pool = self.take_pixels_combined();
         let operation = |pixel: ComplexPixel, client: Client, user: PixelaUser| async move {
             let response = pixel.upload(client, &user).await;
             (pixel, response)
@@ -207,28 +223,17 @@ impl PixelaClient {
                         PixelaResponseError::FatalSendingPixelsError { errors: _, pixels },
                     ) = &mut err
                     {
-                        let len = self.pixels_to_send.len();
-
-                        self.pixels_to_send = vec![0; len];
                         self.pixels.items_mut().append(pixels);
                     }
                     Err(err)
                 }
             };
+        let len = self.pixels_to_send.len();
+
+        self.pixels_to_send = vec![0; len];
         self.pixels.refresh_state();
         self.save_pixels()?;
         result
-    }
-    pub async fn get_and_increment_pixels(&mut self) -> Result<Vec<Pixel>> {
-        let pixel_pool = self.take_pixels_combined();
-        let operation = |mut pixel: ComplexPixel, client: Client, user: PixelaUser| async move {
-            let response = pixel
-                .increment_self_quantity_from_pixela_data(client, &user)
-                .await;
-            (pixel, response)
-        };
-        let resolved_pixels = self.send_and_handle_response(pixel_pool, operation).await?;
-        Ok(resolved_pixels)
     }
     pub fn get_current_subject(&self) -> Option<Subject> {
         if self.current_subject_index == 0 {
@@ -339,17 +344,9 @@ impl PixelaClient {
     }
     pub fn change_focused_pane(&mut self, forward: bool) {
         match forward {
-            true => self.focused_pane = (self.focused_pane.saturating_add(1)) % 3,
-            false => {
-                self.focused_pane = {
-                    if self.focused_pane == 0 {
-                        2
-                    } else {
-                        self.focused_pane.saturating_sub(1) % 3
-                    }
-                }
-            }
-        };
+            true => self.focused_pane.right(),
+            false => self.focused_pane.left(),
+        }
     }
     pub fn delete_pixel(&mut self) -> Result<()> {
         if let Some(index) = self.pixels.state().selected() {
@@ -366,27 +363,19 @@ impl PixelaClient {
         self.logged_in
     }
 
-    pub fn focused_pane(&self) -> u8 {
-        self.focused_pane
-    }
-
     pub fn pixels(&self) -> Vec<&Pixel> {
         self.pixels.iter().collect()
     }
     pub fn select_next(&mut self) {
         match self.focused_pane {
-            0 => self.pixels.select_next(),
-            1 => {}
-            2 => self.subjects.select_next(),
-            _ => {}
+            PixelaTabs::Pixels => self.pixels.select_next(),
+            PixelaTabs::Subject => self.subjects.select_next(),
         }
     }
     pub fn select_previous(&mut self) {
         match self.focused_pane {
-            0 => self.pixels.select_previous(),
-            1 => {}
-            2 => self.subjects.select_previous(),
-            _ => {}
+            PixelaTabs::Pixels => self.pixels.select_previous(),
+            PixelaTabs::Subject => self.subjects.select_previous(),
         }
     }
     pub async fn push_pixel(&mut self) -> Result<()> {
@@ -444,20 +433,27 @@ impl PixelaClient {
                 Pixel::Complex(pixel) => Some(pixel),
                 Pixel::Simple(_) => None,
             })
-            .fold(HashMap::new(), |mut acc, pixel| {
-                let key = (pixel.date_no_time().clone(), pixel.subject().clone());
-                let total_quantity = acc.entry(key).or_insert(0);
-                *total_quantity += pixel.progress().hours(pixel.subject().unit());
-                acc
-            })
+            .fold(
+                HashMap::<(String, Subject), (i32, usize)>::new(),
+                // (Date, Subject): (total_quantity, values_summed_up)
+                |mut acc, pixel| {
+                    let key = (pixel.date_no_time().clone(), pixel.subject().clone());
+                    let total_quantity = acc.entry(key).or_insert((0, 0));
+                    total_quantity.0 += pixel.progress().hours(pixel.subject().unit());
+                    total_quantity.1 += 1;
+                    acc
+                },
+            )
             .into_iter()
             .map(|entry| {
                 let mut pixel = ComplexPixel::new(
-                    Progress::Int(entry.1),
+                    Progress::Int(entry.1 .0),
                     entry.0 .1.clone(),
                     entry.0 .0.clone().to_string(),
                 );
-                pixel.into_aggregate();
+                if entry.1 .1 > 1 {
+                    pixel.into_aggregate();
+                }
                 Pixel::Complex(pixel)
             })
             .collect();
@@ -482,6 +478,25 @@ impl PixelaClient {
             .map(|index| self.pixels.items_mut().remove(index))
             .collect()
     }
+    pub fn clone_selected_pixels(&self, complex_only: bool) -> Vec<Pixel> {
+        let pixels: Vec<usize> = self
+            .pixels_to_send
+            .iter()
+            .enumerate()
+            .filter_map(|(index, element)| {
+                if complex_only && *element == 1 || !complex_only && *element != 0 {
+                    Some(index)
+                } else {
+                    None
+                }
+            })
+            .collect();
+        pixels
+            .into_iter()
+            .rev()
+            .map(|index| self.pixels.items().get(index).unwrap().clone())
+            .collect()
+    }
 
     pub fn current_subject_index(&self) -> usize {
         self.current_subject_index
@@ -501,5 +516,9 @@ impl PixelaClient {
 
     pub fn current_graph_mut(&mut self) -> &mut Option<Graph> {
         &mut self.current_graph
+    }
+
+    pub fn focused_pane(&self) -> PixelaTabs {
+        self.focused_pane
     }
 }
