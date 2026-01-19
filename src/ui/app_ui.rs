@@ -10,6 +10,7 @@ use crate::{
     settings::Mode,
     stats::pixela::{pixela_client::PixelaClient, utils},
     ui::ui_utils::HintProvider,
+    ui::BG,
     utils::tabs,
 };
 use ratatui::{
@@ -101,6 +102,14 @@ impl Widget for &mut AppWidget<'_> {
                     self.render_stats(layout[1], buf);
                 }
                 self.render_footer(layout[2], buf, hints);
+            }
+        }       
+        for y in area.top()..area.bottom() {
+            for x in area.left()..area.right() {
+                let cell = buf.cell_mut((x, y)).expect("Should work");
+                if cell.style().bg == Some(Color::Reset) {
+                    cell.set_style(cell.style().bg(BG));
+                }
             }
         }
     }

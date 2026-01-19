@@ -1,5 +1,4 @@
 use std::mem;
-use std::os::linux::raw::stat;
 use std::process::exit;
 
 use crate::settings::{Mode, Settings, StatsSettings, TimerSettings, UISettings};

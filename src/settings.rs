@@ -1,5 +1,4 @@
 use std::fs;
-use std::os::linux::raw::stat;
 use std::process::exit;
 
 use crate::error::{Result, SettingsError};
@@ -76,7 +75,7 @@ impl Settings {
             .ok_or(SettingsError::HomeDirNotFound)?;
         let path = path.config_dir();
         if !path.exists() {
-            fs::create_dir(path)?
+            fs::create_dir_all(path)?
         }
         let toml_cfg: String =
             toml::to_string(&self).expect("Settings should be instantiated correctly");

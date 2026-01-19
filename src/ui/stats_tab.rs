@@ -58,14 +58,6 @@ impl Widget for &mut StatsTab<'_> {
 
         self.render_graph(main_layout[1], buf);
 
-        for y in area.top()..area.bottom() {
-            for x in area.left()..area.right() {
-                let cell = buf.cell_mut((x, y)).expect("Should work");
-                if cell.style().bg == Some(Color::Reset) {
-                    cell.set_style(cell.style().bg(BG));
-                }
-            }
-        }
     }
 }
 
