@@ -3,6 +3,8 @@ pub enum Tabs {
     TimerTab,
     SettingsTab,
     StatsTab,
+    NoTab,
+
 }
 impl Tabs {
     pub fn next(&mut self) {
@@ -10,6 +12,7 @@ impl Tabs {
             Tabs::TimerTab => Tabs::SettingsTab,
             Tabs::SettingsTab => Tabs::StatsTab,
             Tabs::StatsTab => Tabs::TimerTab,
+            Tabs::NoTab => Tabs::NoTab,
         };
     }
     pub fn prev(&mut self) {
@@ -17,6 +20,7 @@ impl Tabs {
             Tabs::TimerTab => Tabs::StatsTab,
             Tabs::SettingsTab => Tabs::TimerTab,
             Tabs::StatsTab => Tabs::SettingsTab,
+            Tabs::NoTab => Tabs::NoTab,
         };
     }
 }
@@ -26,6 +30,7 @@ impl From<Tabs> for usize {
             Tabs::TimerTab => 0,
             Tabs::SettingsTab => 1,
             Tabs::StatsTab => 2,
+            Tabs::NoTab => 3,
         }
     }
 }
