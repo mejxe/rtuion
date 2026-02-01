@@ -136,7 +136,11 @@ impl SettingsGrid {
         let vert = Layout::vertical([Constraint::Percentage(80)])
             .flex(Flex::Center)
             .split(area);
-        Layout::horizontal(vec![Constraint::Percentage(50)])
+        let mut dynamic_centering_percentage = 50;
+        if area.width < 100 {
+            dynamic_centering_percentage = 100;
+        }
+        Layout::horizontal(vec![Constraint::Percentage(dynamic_centering_percentage)])
             .flex(Flex::Center)
             .split(vert[0])[0]
     }
@@ -286,8 +290,8 @@ fn mode_tab(
         CounterMode::Countdown => ("Pomodoro <", selected_style),
     };
     let (flowmodoro_text, flowmodoro_style) = match mode {
-        CounterMode::Countup => ("> Flowmodoro", selected_style),
-        CounterMode::Countdown => ("  Flowmodoro", not_selected_style),
+        CounterMode::Countup => ("> Flow", selected_style),
+        CounterMode::Countdown => ("  Flow", not_selected_style),
     };
     let pomodoro = Paragraph::new(pomodoro_text)
         .alignment(Alignment::Center)

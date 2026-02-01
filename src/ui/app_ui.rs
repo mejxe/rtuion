@@ -60,20 +60,24 @@ impl Widget for &mut AppWidget<'_> {
             .constraints([Constraint::Max(38), Constraint::Min(1)])
             .split(layout[0]);
 
-        tabs_widget.render(tab_layout[0], buf);
-
         if let Some(popup) = self.app_context.popup_as_mut() {
             popup.render(area, buf);
             return;
         }
         match selected_tab {
             tabs::Tabs::TimerTab => {
+                if window_too_small(20, 10, area, buf) {
+                    return;
+                }
                 let pomodoro_tab = PomodoroTab::new(self.app_context.pomodoro());
                 let hints = pomodoro_tab.provide_hints();
                 pomodoro_tab.render(layout[1], buf);
                 self.render_footer(layout[2], buf, hints);
             }
             tabs::Tabs::SettingsTab => {
+                if window_too_small(65, 30, area, buf) {
+                    return;
+                }
                 let settings_guard = self.app_context.get_settings_ref();
                 let settings = settings_guard.borrow();
                 let timer = &self.app_context.pomodoro().timer;
@@ -88,6 +92,9 @@ impl Widget for &mut AppWidget<'_> {
                 self.render_footer(layout[2], buf, hints);
             }
             tabs::Tabs::StatsTab => {
+                if window_too_small(90, 35, area, buf) {
+                    return;
+                }
                 let (rendered_stats, hints) = if let Some(stats_client) =
                     self.app_context.pomodoro_mut().pixela_client_as_mut()
                 {
@@ -103,7 +110,8 @@ impl Widget for &mut AppWidget<'_> {
                 }
                 self.render_footer(layout[2], buf, hints);
             }
-        }       
+        }
+        tabs_widget.render(tab_layout[0], buf);
         for y in area.top()..area.bottom() {
             for x in area.left()..area.right() {
                 let cell = buf.cell_mut((x, y)).expect("Should work");
@@ -113,6 +121,23 @@ impl Widget for &mut AppWidget<'_> {
             }
         }
     }
+}
+fn window_too_small(
+    min_width: u16,
+    min_height: u16,
+    area: ratatui::prelude::Rect,
+    buf: &mut ratatui::prelude::Buffer,
+) -> bool {
+    if !(area.width < min_width || area.height < min_height) {
+        return false;
+    }
+    let warning = Paragraph::new(format!(
+        "Terminal too small {}x{}, please resize to at least {}x{}",
+        area.width, area.height, min_width, min_height
+    ))
+    .centered();
+    warning.render(area, buf);
+    return true;
 }
 impl<'a> AppWidget<'a> {
     pub fn new(app_context: &'a mut App) -> Self {

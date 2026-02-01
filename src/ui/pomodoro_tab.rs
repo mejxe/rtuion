@@ -9,9 +9,9 @@ use ratatui::layout::Direction;
 use ratatui::layout::Layout;
 use ratatui::layout::{Alignment, Rect};
 use ratatui::layout::{Constraint, Flex};
-use ratatui::style::Color;
 use ratatui::style::Modifier;
 use ratatui::style::Style;
+use ratatui::style::{Color, Stylize};
 use ratatui::text::Text;
 use ratatui::widgets::BorderType;
 use ratatui::widgets::Borders;
@@ -46,8 +46,15 @@ impl Widget for PomodoroTab<'_> {
             .title(main_title)
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
-            .style(Style::default().fg(YELLOW)); // Gruvbox yellow for border
+            .style(Style::default().fg(YELLOW));
 
+        if area.width < 65 || area.height < 30 {
+            match self.pomodoro.timer.counter_mode() {
+                CounterMode::Countdown => self.render_compressed_pomodoro_ui(area, buf),
+                CounterMode::Countup => self.render_compressed_flowmodoro_ui(area, buf),
+            }
+            return;
+        }
         let color = match self.pomodoro.timer.current_state() {
             TimerState::Work(_) => BLUE,
             TimerState::Break(_) => GREEN,
@@ -157,6 +164,7 @@ impl Widget for PomodoroTab<'_> {
         }
     }
 }
+
 impl<'a> PomodoroTab<'a> {
     pub fn new(pomodoro: &'a Pomodoro) -> Self {
         Self { pomodoro }
@@ -188,13 +196,20 @@ impl<'a> PomodoroTab<'a> {
         area: ratatui::prelude::Rect,
         buf: &mut ratatui::prelude::Buffer,
     ) {
+        let mut center_percentage = 40;
+        let mut smol = false;
+        // smoll mode
+        if area.width < 100 {
+            smol = true;
+            center_percentage = 70;
+        }
         let outer_block = Block::bordered()
             .title(" Flowmodoro Summary ")
             .title_alignment(Alignment::Left)
             .border_type(BorderType::Rounded)
             .padding(Padding::symmetric(5, 0))
             .border_style(Style::default().fg(GREEN));
-        let outer_layout = Layout::horizontal([Constraint::Percentage(40)])
+        let outer_layout = Layout::horizontal([Constraint::Percentage(center_percentage)])
             .flex(Flex::Center)
             .split(area);
         let inside_layout = Layout::vertical([
@@ -206,22 +221,31 @@ impl<'a> PomodoroTab<'a> {
         .split(outer_block.inner(outer_layout[0]));
         outer_block.render(outer_layout[0], buf);
         let time = self.pomodoro.timer.total_elapsed();
-        let worked_for = format!(
-            "{:02} hours, {:02} minutes, {:02} second(s)",
-            time / 3600,
-            (time % 3600) / 60,
-            time % 60
-        );
         let break_time = if let TimerState::Break(_) = self.pomodoro.timer.current_state() {
             0
         } else {
             self.pomodoro.timer.break_time()
         };
         let next_break_time = UIHelper::create_settings_paragraph(
-            &format!("Next break time length: {break_time} second(s) "),
+            &format!("Next break time length: {break_time} seconds "),
             None,
         )
         .left_aligned();
+        let worked_for = match smol {
+            false => format!(
+                "{:02} hours, {:02} minutes, {:02} second(s)",
+                time / 3600,
+                (time % 3600) / 60,
+                time % 60
+            ),
+            true => format!(
+                "{:02}:{:02}:{:02}",
+                time / 3600,
+                (time % 3600) / 60,
+                time % 60
+            ),
+        };
+
         let already_worked_for =
             UIHelper::create_settings_paragraph(&format!("Already worked for: {worked_for}"), None)
                 .left_aligned();
@@ -277,6 +301,99 @@ impl<'a> PomodoroTab<'a> {
         count_paragraph.render(pomodoro_layout[1], buf);
         gauge.render(gauge_layout[0], buf);
         self.render_subject_select(pomodoro_layout[0], buf);
+    }
+    fn render_compressed_flowmodoro_ui(
+        &self,
+        area: ratatui::prelude::Rect,
+        buf: &mut ratatui::prelude::Buffer,
+    ) {
+        let layout = Layout::vertical(vec![
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Length(1),
+        ])
+        .flex(Flex::Center)
+        .split(area);
+        let time = self.pomodoro.timer.time_left();
+        let timer_paragraph = Paragraph::new(format!(
+            "{:02}:{:02}:{:02}",
+            time / 3600,
+            (time % 3600) / 60,
+            time % 60
+        ))
+        .centered();
+        let (current_state, color) = match self.pomodoro.timer.current_state() {
+            TimerState::Work(_) => ("Work", BLUE),
+            TimerState::Break(_) => ("Break", GREEN),
+        };
+        let state_paragraph = Paragraph::new(current_state).centered().fg(color);
+
+        let break_time = if let TimerState::Break(_) = self.pomodoro.timer.current_state() {
+            0
+        } else {
+            self.pomodoro.timer.break_time()
+        };
+        let next_break_time = Paragraph::new(format!("NxtBreak: {break_time}"))
+            .centered()
+            .fg(YELLOW);
+
+        let worked_for = format!(
+            "{:02}:{:02}:{:02}",
+            time / 3600,
+            (time % 3600) / 60,
+            time % 60
+        );
+        let already_worked_for = Paragraph::new(format!("TPassed: {worked_for}"))
+            .centered()
+            .fg(RED);
+        let breaks_taken_num = self.pomodoro.timer.iteration().saturating_sub(1);
+        let breaks_taken = Paragraph::new(format!("Breaks: {breaks_taken_num}"))
+            .centered()
+            .fg(BLUE);
+        state_paragraph.render(layout[0], buf);
+        timer_paragraph.render(layout[1], buf);
+        next_break_time.render(layout[2], buf);
+        already_worked_for.render(layout[3], buf);
+        breaks_taken.render(layout[4], buf);
+    }
+
+    fn render_compressed_pomodoro_ui(
+        &self,
+        area: ratatui::prelude::Rect,
+        buf: &mut ratatui::prelude::Buffer,
+    ) {
+        let layout = Layout::vertical(vec![
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Length(1),
+        ])
+        .flex(Flex::Center)
+        .split(area);
+        let time = self.pomodoro.timer.time_left();
+        let timer_paragraph = Paragraph::new(format!(
+            "{:02}:{:02}:{:02}",
+            time / 3600,
+            (time % 3600) / 60,
+            time % 60
+        ))
+        .centered();
+        let (current_state, color) = match self.pomodoro.timer.current_state() {
+            TimerState::Work(_) => ("Work", BLUE),
+            TimerState::Break(_) => ("Break", GREEN),
+        };
+        let iteration_paragraph = Paragraph::new(format!(
+            "C_Iteration: {}, Iterations: {}",
+            self.pomodoro.timer.iteration(),
+            self.pomodoro.timer.total_iterations()
+        ))
+        .centered()
+        .fg(YELLOW);
+        let state_paragraph = Paragraph::new(current_state).centered().fg(color);
+        timer_paragraph.render(layout[0], buf);
+        state_paragraph.render(layout[1], buf);
+        iteration_paragraph.render(layout[2], buf);
     }
 }
 fn ascii_animation(frames: &[&str], time: i64) -> String {
