@@ -139,6 +139,7 @@ impl Pomodoro {
     pub async fn handle_timer_tick(&mut self, time: i64) -> Result<()> {
         self.handle_logging(time)?;
         self.timer.handle_timer_response(time).await;
+        self.duration_since_last_save+=1;
         Ok(())
     }
     fn handle_logging(&mut self, time: i64) -> Result<()> {

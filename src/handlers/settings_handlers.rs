@@ -44,6 +44,7 @@ impl App {
     }
     pub async fn handle_settings_input(&mut self, key_event: KeyEvent) {
         match key_event.code {
+            KeyCode::Char(' ') => {},
             KeyCode::Esc | KeyCode::Enter => self.settings().borrow_mut().change_mode(Mode::Modify),
             key => {
                 let mut text = None;

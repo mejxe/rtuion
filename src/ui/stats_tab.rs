@@ -148,7 +148,7 @@ impl<'a> StatsTab<'a> {
                     "Status: Logged in as {}",
                     self.pixela_client.user.username()
                 ),
-                "You can use complex stats tracking for this session!".into(),
+                "You can use complex stats tracking!".into(),
             ),
         };
         let status_text = Paragraph::new(status)
@@ -199,7 +199,7 @@ impl<'a> StatsTab<'a> {
                     .map(|subject| {
                         SubjectToListWrapper {
                             subject,
-                            selected: self.pixela_client.get_subject(0).unwrap() == **subject,
+                            selected: self.pixela_client.get_current_subject().unwrap_or_else(|| self.pixela_client.get_subject(0).unwrap()) == **subject,
                         }
                         .into()
                     })
@@ -279,13 +279,12 @@ impl From<SubjectToListWrapper<'_>> for ListItem<'_> {
         let subject_text = value.subject.graph_name().to_string();
 
         let line = match value.selected {
-            true if value.subject.is_dummy() => {
-                Line::styled(subject_text, Style::default().fg(GREEN))
-            }
-            true => Line::styled(
+            true if value.subject.is_dummy() => 
+                 Line::styled(subject_text, Style::default().fg(GREEN)).into(),
+            true => 
+                 Line::styled(
                 format!("{} [Tracking]", subject_text),
-                Style::default().fg(GREEN),
-            ),
+                Style::default().fg(GREEN)).into(),
             false => Line::styled(subject_text.to_string(), Style::default().fg(Color::White)),
         };
         ListItem::new(line)

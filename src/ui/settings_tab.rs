@@ -570,8 +570,15 @@ fn stats_tab(
             Style::default().fg(Color::DarkGray)
         })
         .left_aligned();
+        let username = |username: &str| -> String {
+            if username.is_empty() {
+                "-".to_string()
+            } else {
+                username.to_string()
+            }
+        }(stats_settings.pixela_username.as_deref().unwrap_or(" "));
     let mut username_value = UIHelper::create_settings_paragraph(
-        stats_settings.pixela_username.as_deref().unwrap_or("—"),
+        &username,
         Some(if stats_settings.stats_on {
             SettingsTab::highlight_selected(selected_num, selected_tab, this_tab, 1, current_mode)
         } else {
@@ -595,7 +602,7 @@ fn stats_tab(
         .as_ref()
         .map(|t| "•".repeat(t.len().min(12)))
         .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| "—".to_string());
+        .unwrap_or_else(|| "-".to_string());
     let mut token_value = UIHelper::create_settings_paragraph(
         &token_display,
         Some(if stats_settings.stats_on {

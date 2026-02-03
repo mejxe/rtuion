@@ -127,6 +127,7 @@ impl App {
                                     if cancel_token.is_cancelled() {
                                         return Ok(());
                                     }
+                                    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
                                 }
                                 event::Event::Resize(_, _) => {
                                     let _ = tx.send(Event::TerminalEvent).await;

@@ -48,7 +48,7 @@ impl Widget for PomodoroTab<'_> {
             .border_type(BorderType::Rounded)
             .style(Style::default().fg(YELLOW));
 
-        if area.width < 65 || area.height < 30 {
+        if area.width < 75 || area.height < 25 {
             match self.pomodoro.timer.counter_mode() {
                 CounterMode::Countdown => self.render_compressed_pomodoro_ui(area, buf),
                 CounterMode::Countup => self.render_compressed_flowmodoro_ui(area, buf),
@@ -198,10 +198,12 @@ impl<'a> PomodoroTab<'a> {
     ) {
         let mut center_percentage = 40;
         let mut smol = false;
+        let mut text_align = Alignment::Left;
         // smoll mode
-        if area.width < 100 {
+        if area.width < 150 {
             smol = true;
             center_percentage = 70;
+            text_align = Alignment::Center
         }
         let outer_block = Block::bordered()
             .title(" Flowmodoro Summary ")
@@ -220,7 +222,7 @@ impl<'a> PomodoroTab<'a> {
         .flex(Flex::Center)
         .split(outer_block.inner(outer_layout[0]));
         outer_block.render(outer_layout[0], buf);
-        let time = self.pomodoro.timer.total_elapsed();
+        let elapsed_time = self.pomodoro.timer.total_elapsed();
         let break_time = if let TimerState::Break(_) = self.pomodoro.timer.current_state() {
             0
         } else {
@@ -230,29 +232,29 @@ impl<'a> PomodoroTab<'a> {
             &format!("Next break time length: {break_time} seconds "),
             None,
         )
-        .left_aligned();
+                .alignment(text_align);
         let worked_for = match smol {
             false => format!(
-                "{:02} hours, {:02} minutes, {:02} second(s)",
-                time / 3600,
-                (time % 3600) / 60,
-                time % 60
+                "{:02} hrs, {:02} mins, {:02} secs",
+                elapsed_time / 3600,
+                (elapsed_time % 3600) / 60,
+                elapsed_time % 60
             ),
             true => format!(
                 "{:02}:{:02}:{:02}",
-                time / 3600,
-                (time % 3600) / 60,
-                time % 60
+                elapsed_time / 3600,
+                (elapsed_time % 3600) / 60,
+                elapsed_time % 60
             ),
         };
 
         let already_worked_for =
             UIHelper::create_settings_paragraph(&format!("Already worked for: {worked_for}"), None)
-                .left_aligned();
+                .alignment(text_align);
         let breaks_taken_num = self.pomodoro.timer.iteration().saturating_sub(1);
         let breaks_taken =
             UIHelper::create_settings_paragraph(&format!("Breaks taken: {breaks_taken_num}"), None)
-                .left_aligned();
+                .alignment(text_align);
         next_break_time.render(inside_layout[0], buf);
         already_worked_for.render(inside_layout[1], buf);
         breaks_taken.render(inside_layout[2], buf);
@@ -338,12 +340,12 @@ impl<'a> PomodoroTab<'a> {
         let next_break_time = Paragraph::new(format!("NxtBreak: {break_time}"))
             .centered()
             .fg(YELLOW);
-
+let time_elapsed = self.pomodoro.timer.total_elapsed();
         let worked_for = format!(
             "{:02}:{:02}:{:02}",
-            time / 3600,
-            (time % 3600) / 60,
-            time % 60
+            time_elapsed / 3600,
+            (time_elapsed % 3600) / 60,
+            time_elapsed % 60
         );
         let already_worked_for = Paragraph::new(format!("TPassed: {worked_for}"))
             .centered()

@@ -71,7 +71,7 @@ impl StatsSettings {
 
 impl Settings {
     pub fn save_to_file(&self) -> Result<()> {
-        let path = ProjectDirs::from("romodoro", "mejxedev", "romodoro")
+        let path = ProjectDirs::from("romodoro", "romodoro", "romodoro")
             .ok_or(SettingsError::HomeDirNotFound)?;
         let path = path.config_dir();
         if !path.exists() {
@@ -83,7 +83,7 @@ impl Settings {
         Ok(())
     }
     pub fn new() -> Result<Settings> {
-        let path = ProjectDirs::from("romodoro", "mejxedev", "romodoro")
+        let path = ProjectDirs::from("romodoro", "romodoro", "romodoro")
             .ok_or(SettingsError::HomeDirNotFound)?;
         let path = path.config_dir();
 
