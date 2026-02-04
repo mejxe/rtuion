@@ -14,10 +14,7 @@ impl App {
     pub async fn handle_event(&mut self, event: Event) {
         match event {
             Event::KeyPress(key) => {
-                let key_kind: KeyEventKind = key.kind;
-                if let key_kind = KeyEventKind::Release { 
                 self.handle_key_event(key).await;
-                }
             }
             Event::TimerTick(time) => {
                 if let Err(e) = self.pomodoro_mut().handle_timer_tick(time).await {

@@ -18,6 +18,8 @@ use std::cell::RefCell;
 use std::io;
 use std::process::exit;
 use std::rc::Rc;
+use std::time::Duration;
+use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
 #[derive(Derivative)]
@@ -111,6 +113,8 @@ impl App {
         cancel_token: CancellationToken,
     ) -> std::io::Result<()> {
         let mut reader = EventStream::new();
+        let mut last_event_time = Instant::now();
+        let debounce_time = Duration::from_millis(100);
         loop {
             tokio::select! {
                 _ = cancel_token.cancelled() => {
@@ -123,11 +127,14 @@ impl App {
                                 crossterm::event::Event::Key(key_event)
                                     if key_event.kind == KeyEventKind::Press =>
                                 {
-                                    let _ = tx.send(Event::KeyPress(key_event)).await;
+                                    if last_event_time.elapsed() >= debounce_time {
+                                        let _ = tx.send(Event::KeyPress(key_event)).await;
+                                            last_event_time = Instant::now();
+                                        }
+                                    else {};
                                     if cancel_token.is_cancelled() {
                                         return Ok(());
                                     }
-                                    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
                                 }
                                 event::Event::Resize(_, _) => {
                                     let _ = tx.send(Event::TerminalEvent).await;
