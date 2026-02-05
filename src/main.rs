@@ -2,24 +2,34 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crossterm::terminal;
-use pomodoro::app::*;
-use pomodoro::romodoro::*;
-use pomodoro::settings::SettingsTab;
-use pomodoro::error::Result;
-// ALPHA 0.1
-
+use rtuion::app::*;
+use rtuion::error::Result;
+use rtuion::popup::Popup;
+use rtuion::romodoro::*;
+use rtuion::settings::Settings;
 
 #[tokio::main]
-async fn main() -> Result<()>{
+async fn main() -> Result<()> {
     let (tx, rx) = tokio::sync::mpsc::channel(4);
-    let (tx_events,  rx_events) = tokio::sync::mpsc::channel(32);
+    let (tx_events, rx_events) = tokio::sync::mpsc::channel(32);
     let (tx_commands, rx_commands) = tokio::sync::mpsc::channel(4);
-    let settings =  Rc::new(RefCell::new(SettingsTab::new()?));
-    let pomodoro = Pomodoro::new(tx, rx_commands, tx_commands,settings.clone());
+    let settings_manager = Rc::new(RefCell::new(Settings::new()?));
+    let mut pomodoro = Pomodoro::new(tx, rx_commands, tx_commands, settings_manager.clone());
+
     terminal::enable_raw_mode()?;
     let mut terminal = ratatui::init();
-    let mut app = App::new(pomodoro,settings);
-    let app_result = app.run(&mut terminal,rx_events,tx_events,rx).await; // mainloop
+
+    let mut pixela_failed_popup: Option<Popup> = None;
+    if settings_manager.borrow().stats_setting.stats_on {
+        // init pixela module
+        if let Err(err) = pomodoro.try_init_pixela_client() {
+            pixela_failed_popup = Some(err.into());
+        }
+    }
+
+    let mut app = App::new(pomodoro, settings_manager, tx_events);
+    app.set_popup_opt(pixela_failed_popup);
+    let app_result = app.run(&mut terminal, rx_events, rx).await; // mainloop
     terminal::disable_raw_mode()?;
 
     ratatui::restore();

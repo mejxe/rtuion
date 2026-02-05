@@ -1,45 +1,76 @@
+use crate::error::Error;
+use crate::popup::Popup;
 use crate::romodoro::Pomodoro;
 use crate::settings::*;
+use crate::stats::pixela::graph::Graph;
+use crate::timers::counters::CounterMode;
+use crate::ui::app_ui::AppWidget;
+use crate::ui::popup::popup_area;
+use crate::utils::tabs::Tabs;
+use arboard::Clipboard;
 use core::panic;
-use crossterm::event::{self, KeyCode, KeyEvent, KeyEventKind};
+use crossterm::event::{self, EventStream, KeyEvent, KeyEventKind};
+use derivative::Derivative;
+use futures::StreamExt;
+use ratatui::layout::Rect;
 use ratatui::DefaultTerminal;
 use std::cell::RefCell;
 use std::io;
 use std::rc::Rc;
+use std::time::Duration;
+use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
-#[derive(Debug)]
+#[derive(Derivative)]
+#[derivative(Debug)]
 pub struct App {
     exit: bool,
     pomodoro: Pomodoro,
-    selected_tab: usize,
-    settings: Rc<RefCell<SettingsTab>>,
-    settings_popup_showing: bool,
+    selected_tab: Tabs,
+    settings: Rc<RefCell<Settings>>,
+    popup: Option<Popup>, // TODO: popup queue maybe so they don't overwrite each other?
+    popup_size: Rect,
+    #[derivative(Debug = "ignore")]
+    clipboard: Option<Clipboard>,
+    event_tx: tokio::sync::mpsc::Sender<Event>,
 }
 pub enum Event {
     TimerTick(i64),
     KeyPress(KeyEvent),
     TerminalEvent,
+    OverwriteTimerSettings,
+    OverwriteTimerForSubject(usize),
+    SendPixels,
+    DeletePixel,
+    RequestGraph,
+    RestartTimer,
+    GraphReceived(Result<Graph, Error>),
 }
 impl App {
-    pub fn new(pomodoro: Pomodoro, settings: Rc<RefCell<SettingsTab>>) -> Self {
+    pub fn new(
+        pomodoro: Pomodoro,
+        settings: Rc<RefCell<Settings>>,
+        event_tx: tokio::sync::mpsc::Sender<Event>,
+    ) -> Self {
         App {
             pomodoro,
             exit: false,
-            selected_tab: 0,
+            selected_tab: Tabs::TimerTab,
             settings,
-            settings_popup_showing: false,
+            popup: None,
+            clipboard: Clipboard::new().ok(),
+            event_tx,
+            popup_size: Rect::default(),
         }
     }
     pub async fn run(
         &mut self,
         terminal: &mut DefaultTerminal,
         mut rx: tokio::sync::mpsc::Receiver<Event>,
-        tx: tokio::sync::mpsc::Sender<Event>,
         mut time_rx: tokio::sync::mpsc::Receiver<i64>,
     ) -> io::Result<()> {
-        let tx_inputs = tx.clone();
-        let tx_timer = tx.clone();
+        let tx_inputs = self.event_tx.clone();
+        let tx_timer = self.event_tx.clone();
 
         let cancelation_token = tokio_util::sync::CancellationToken::new();
         let input_cancel = cancelation_token.clone();
@@ -47,7 +78,7 @@ impl App {
         let timer_cancel = cancelation_token.clone();
 
         let input_task = tokio::spawn(async move {
-            match App::handle_inputs(tx_inputs, input_cancel).await {
+            match App::convert_events(tx_inputs, input_cancel).await {
                 Ok(_) => {}
                 Err(e) => {
                     panic!("{e}")
@@ -60,167 +91,202 @@ impl App {
         });
         self.pomodoro.create_countdown(timer_cancel).await;
 
-        terminal.draw(|frame| self.draw(frame))?;
+        let _ = self.event_tx.send(Event::TerminalEvent).await; // prompt the handler to draw
+
         while !self.exit {
             if let Some(event) = rx.recv().await {
-                match event {
-                    Event::KeyPress(key) => {
-                        self.handle_key_event(key).await;
-                    }
-                    Event::TimerTick(time) => {
-                        self.pomodoro.handle_timer_responses(time).await;
-                    }
-                    Event::TerminalEvent => {}
-                }
+                self.handle_event(event).await;
             }
-            terminal.draw(|frame| self.draw(frame))?;
+            let mut widget = AppWidget::new(self);
+            terminal.draw(|frame| widget.draw(frame))?;
+            self.popup_size = popup_area(terminal.get_frame().area(), 50, 35);
         }
         cancelation_token.cancel();
         timer_task.await?;
         input_task.abort();
         Ok(())
     }
-    async fn handle_key_event(&mut self, key_event: KeyEvent) {
-        //global
-        match key_event.code {
-            KeyCode::Char('Q') => self.exit(),
-            KeyCode::Tab if !self.settings_popup_showing => self.change_tab(),
-            _ => {}
-        }
-        match self.selected_tab {
-            0 => {
-                // timer
-                match key_event.code {
-                    KeyCode::Char(' ') => self.pomodoro.cycle().await,
-                    _ => {}
-                }
-            }
-            // settings
-            1 => match self.settings_popup_showing {
-                false => match key_event.code {
-                    KeyCode::Down => self.settings.borrow_mut().select_down(),
-                    KeyCode::Up => self.settings.borrow_mut().select_up(),
-                    KeyCode::Right => self.settings.borrow_mut().increment(),
-                    KeyCode::Left => self.settings.borrow_mut().decrement(),
-                    KeyCode::Char(' ') => self.update_settings().await,
-                    KeyCode::Char('r') => self.settings.borrow_mut().restore_defaults(),
-                    _ => {}
-                },
-                true => match key_event.code {
-                    KeyCode::Char('y') if self.settings_popup_showing => {
-                        self.overwrite_timer().await
-                    }
-                    KeyCode::Char('n') if self.settings_popup_showing => {
-                        self.settings_popup_showing = false
-                    }
-                    _ => {}
-                },
-            },
-            _ => {}
-        }
-    }
 
-    async fn handle_inputs(
+    async fn convert_events(
         tx: tokio::sync::mpsc::Sender<Event>,
         cancel_token: CancellationToken,
     ) -> std::io::Result<()> {
+        let mut reader = EventStream::new();
+        let mut last_event_time = Instant::now();
+        let debounce_time = Duration::from_millis(50);
         loop {
-            match event::read()? {
-                crossterm::event::Event::Key(key_event)
-                    if key_event.kind == KeyEventKind::Press =>
-                {
-                    let _ = tx.send(Event::KeyPress(key_event)).await;
-                    if cancel_token.is_cancelled() {
-                        return Ok(());
+            tokio::select! {
+                _ = cancel_token.cancelled() => {
+                    return Ok(());
+                }
+                event_opt = reader.next() => {
+                    match event_opt {
+                        Some(Ok(event)) => {
+                            match event {
+                                crossterm::event::Event::Key(key_event)
+                                    if key_event.kind == KeyEventKind::Press =>
+                                {
+                                    if last_event_time.elapsed() >= debounce_time {
+                                        let _ = tx.send(Event::KeyPress(key_event)).await;
+                                            last_event_time = Instant::now();
+                                        }
+                                    else {};
+                                    if cancel_token.is_cancelled() {
+                                        return Ok(());
+                                    }
+                                }
+                                event::Event::Resize(_, _) => {
+                                    let _ = tx.send(Event::TerminalEvent).await;
+                                    if cancel_token.is_cancelled() {
+                                        return Ok(());
+                                    }
+                                }
+                                        _ => {}
+
+                                    }
+                                }
+                        Some(Err(e)) => return Err(e),
+                        None => return Ok(()),
                     }
                 }
-                event::Event::Resize(_, _) => {
-                    let _ = tx.send(Event::TerminalEvent).await;
-                    if cancel_token.is_cancelled() {
-                        return Ok(());
-                    }
-                }
-                _ => {
-                    if cancel_token.is_cancelled() {
-                        return Ok(());
-                    }
-                }
-            };
+            }
         }
     }
-    async fn update_settings(&mut self) {
-        if self.pomodoro.timer.get_running() {
-            self.settings_popup_showing = true;
+    fn ask_overwrite_timer(&mut self) {
+        let _ = self.event_tx.try_send(Event::OverwriteTimerSettings);
+    }
+    pub async fn update_settings(&mut self) {
+        if self.pomodoro.timer.timer_started() {
+            self.set_popup(Popup::yes_no(
+                "This will overwrite current progress".into(),
+                Box::new(App::ask_overwrite_timer),
+            ));
             return;
         }
-        let break_time = self
-            .settings
-            .borrow()
-            .get_pomodoro_setting(PomodoroSettings::BreakTime(None));
-        let work_time = self
-            .settings
-            .borrow()
-            .get_pomodoro_setting(PomodoroSettings::WorkTime(None));
-        let iterations = self
-            .settings
-            .borrow()
-            .get_pomodoro_setting(PomodoroSettings::Iterations(None));
-        let current_break_time: PomodoroSettings = self.pomodoro.timer.get_break_state().into();
-        let current_work_time: PomodoroSettings = self.pomodoro.timer.get_work_state().into();
-        let current_iterations: PomodoroSettings =
-            PomodoroSettings::Iterations(Some(self.pomodoro.timer.get_total_iterations()));
-        if current_break_time != break_time {
-            self.pomodoro.set_setting(break_time).await;
+        let break_time = self.settings.borrow().break_time();
+        let work_time = self.settings.borrow().work_time();
+        let iterations = self.settings.borrow().iterations();
+        let mode = self.settings.borrow().counter_mode();
+        if let Some(pixela) = self.pomodoro.pixela_client() {
+            if mode == CounterMode::Countdown {
+                if let Some(subject) = pixela.get_current_subject() {
+                    let min_incr = subject.get_min_increment();
+                    if work_time < min_incr * 60 {
+                        let err: Error = crate::error::SettingsError::WrongSetting(
+                        format!("Your work time cannot be smaller than selected subjects smallest increment: {min_incr}")).into();
+                        self.set_popup(Popup::from(err));
+                        return;
+                    }
+                }
+            }
         }
-        if current_work_time != work_time {
-            self.pomodoro.set_setting(work_time).await;
-        }
-        if current_iterations != iterations {
-            self.pomodoro.set_setting(iterations).await;
+        self.pomodoro
+            .set_setting(PomodoroSettings::BreakTime(break_time as i64))
+            .await;
+        self.pomodoro
+            .set_setting(PomodoroSettings::WorkTime(work_time as i64))
+            .await;
+        self.pomodoro
+            .set_setting(PomodoroSettings::Iterations(iterations as u8))
+            .await;
+        self.pomodoro.set_counter_mode(mode).await;
+
+        // save settings and overwrite existing pixela_client
+        let mut popup = Error::handle_error_and_consume_data(self.settings.borrow().save_to_file());
+        self.set_popup_opt(popup);
+        let stats_on = self.settings().borrow().stats_setting.stats_on;
+        match stats_on {
+            true => {
+                let (current_pixela_name, current_pixela_token) =
+                    match self.pomodoro.pixela_client() {
+                        Some(pixela_client) => {
+                            (pixela_client.user.username(), pixela_client.user.token())
+                        }
+
+                        None => ("", ""),
+                    };
+                if self
+                    .pomodoro()
+                    .check_pixela_changed(current_pixela_name, current_pixela_token)
+                {
+                    popup = Error::handle_error_and_consume_data(
+                        self.pomodoro.try_init_pixela_client(),
+                    );
+                    self.set_popup_opt(popup);
+                }
+            }
+            false => {
+                self.pomodoro.clear_pixela();
+            }
         }
     }
-    pub async fn overwrite_timer(&mut self) {
-        self.pomodoro.timer.stop().await;
-        self.settings_popup_showing = false;
+    pub async fn overwrite_timer_settings(&mut self) {
+        self.pomodoro.timer.restart().await;
         self.update_settings().await;
     }
 
-    pub fn get_selected_tab(&self) -> usize {
-        self.selected_tab
-    }
-    pub fn get_settings_ref(&self) -> Rc<RefCell<SettingsTab>> {
+    pub fn get_settings_ref(&self) -> Rc<RefCell<Settings>> {
         self.settings.clone()
     }
-    pub fn get_pomodoro_ref(&self) -> &Pomodoro {
-        &self.pomodoro
-    }
-    pub fn get_show_popup(&self) -> bool {
-        self.settings_popup_showing
-    }
 
-    fn change_tab(&mut self) {
-        if self.selected_tab == 2 {
-            self.selected_tab = 0;
-        } else {
-            self.selected_tab += 1;
-        }
-    }
-
-    fn exit(&mut self) {
+    pub fn exit(&mut self) {
         self.exit = true;
     }
+
+    pub fn popup(&self) -> Option<&Popup> {
+        self.popup.as_ref()
+    }
+    pub fn popup_as_mut(&mut self) -> Option<&mut Popup> {
+        self.popup.as_mut()
+    }
+    pub fn clear_popup(&mut self) {
+        self.popup = None;
+    }
+
+    pub fn set_popup(&mut self, popup: Popup) {
+        self.popup = Some(popup);
+    }
+    pub fn set_popup_opt(&mut self, popup: Option<Popup>) {
+        self.popup = popup;
+    }
+
+    pub fn event_tx(&self) -> &tokio::sync::mpsc::Sender<Event> {
+        &self.event_tx
+    }
+
+    pub fn pomodoro(&self) -> &Pomodoro {
+        &self.pomodoro
+    }
+
+    pub fn pomodoro_mut(&mut self) -> &mut Pomodoro {
+        &mut self.pomodoro
+    }
+
+    pub fn settings(&self) -> &RefCell<Settings> {
+        &self.settings
+    }
+
+    pub fn clipboard(&self) -> Option<&Clipboard> {
+        self.clipboard.as_ref()
+    }
+
+    pub fn clipboard_mut(&mut self) -> &mut Option<Clipboard> {
+        &mut self.clipboard
+    }
+
+    pub const fn take_popup(&mut self) -> Option<Popup> {
+        self.popup.take()
+    }
+
+    pub fn selected_tab(&self) -> Tabs {
+        self.selected_tab
+    }
+
+    pub fn selected_tab_mut(&mut self) -> &mut Tabs {
+        &mut self.selected_tab
+    }
+
+    pub fn popup_size(&self) -> Rect {
+        self.popup_size
+    }
 }
-
-#[cfg(test)]
-mod test {
-    use super::*;
-
-    //  #[test]
-    //   #[ignore]
-    //   fn multithread_works() {
-    //       let (tx, rx) = tokio::sync::mpsc::channel(4);
-    //       let mut app = App::new(Timer::new(PomodoroState::Work(2), PomodoroState::Break(1), 2), rx, tx);
-    //       app.start_timer();
-
-    //   }
-} //
