@@ -20,6 +20,6 @@ git clone https://github.com/mejxe/rtuion.git
 TODO!
 
 ## Gallery
-(images/timer.png)
-(images/settings.png)
-(images/stats.png)
+![Timer](images/timer.png)
+![Settings](images/settings.png)
+![Stats](images/stats.png)
