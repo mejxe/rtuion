@@ -1,6 +1,5 @@
-use std::{cell::RefCell, fmt::Display, rc::Rc, time};
+use std::{cell::RefCell, fmt::Display, rc::Rc};
 
-use futures::stream::Count;
 
 use crate::{
     settings::{PomodoroSettings, Settings, TimerSettings},

@@ -2,11 +2,11 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crossterm::terminal;
-use pomodoro::app::*;
-use pomodoro::error::Result;
-use pomodoro::popup::Popup;
-use pomodoro::romodoro::*;
-use pomodoro::settings::Settings;
+use rtuion::app::*;
+use rtuion::error::Result;
+use rtuion::popup::Popup;
+use rtuion::romodoro::*;
+use rtuion::settings::Settings;
 
 #[tokio::main]
 async fn main() -> Result<()> {

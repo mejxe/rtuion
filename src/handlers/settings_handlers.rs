@@ -1,10 +1,8 @@
-use std::process::exit;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::{
-    app::{App, Event},
-    popup::Popup,
+    app::App,
     settings::Mode,
     utils::settings_helper_structs::SettingsTabs,
 };

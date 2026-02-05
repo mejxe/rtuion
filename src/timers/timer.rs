@@ -1,6 +1,5 @@
-use std::{cell::RefCell, process::exit, rc::Rc};
+use std::{cell::RefCell, rc::Rc};
 
-use futures::stream::Count;
 use tokio_util::sync::CancellationToken;
 
 use crate::{

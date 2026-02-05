@@ -5,7 +5,7 @@ use ratatui::{
     widgets::{Block, BorderType, Borders, Paragraph},
 };
 
-use crate::{app::App, settings::Mode, utils::settings_helper_structs::SettingsTabs};
+use crate::{settings::Mode, utils::settings_helper_structs::SettingsTabs};
 
 use super::{app_ui::AppWidget, settings_tab::SettingsTab, BLUE, GREEN, YELLOW};
 #[derive(Clone, Copy)]
@@ -107,10 +107,10 @@ impl<'a> UIHelper {
         value_that_highlights: bool,
         current_value: bool,
     ) -> Style {
-        if (value_that_highlights == current_value
+        if value_that_highlights == current_value
             && tab_data.selected_setting == this_setting
             && tab_data.selected_tab == this_tab
-            && tab_data.current_mode == Mode::Modify)
+            && tab_data.current_mode == Mode::Modify
         {
             Style::default().fg(YELLOW).underlined()
         } else if value_that_highlights == current_value {
@@ -137,6 +137,7 @@ impl HintProvider for AppWidget<'_> {
     fn provide_hints(&self) -> Vec<FooterHint> {
         vec![
             FooterHint::new("Tab", "Next tab"),
+            FooterHint::new("S-Tab", "Prev tab"),
             FooterHint::new("Q", "Quit"),
         ]
     }

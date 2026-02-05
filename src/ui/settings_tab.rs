@@ -1,22 +1,20 @@
 use std::mem;
-use std::process::exit;
 
 use crate::settings::{Mode, Settings, StatsSettings, TimerSettings, UISettings};
 use crate::stats::pixela::pixela_client::PixelaClient;
 use crate::timers::counters::CounterMode;
 use crate::timers::timer::Timer;
 use crate::ui::ui_utils::FooterHint;
-use crate::ui::{BG, BLUE, RED, YELLOW};
+use crate::ui::{BLUE, RED, YELLOW};
 use crate::utils::settings_helper_structs::SettingsTabs;
 use ratatui::buffer::Buffer;
+use ratatui::layout::Constraint;
 use ratatui::layout::Layout;
 use ratatui::layout::{Alignment, Rect};
-use ratatui::layout::{Constraint, Margin};
 use ratatui::layout::{Direction, Flex};
 use ratatui::style::Modifier;
 use ratatui::style::Style;
 use ratatui::style::{Color, Stylize};
-use ratatui::text::Span;
 use ratatui::widgets::Block;
 use ratatui::widgets::BorderType;
 use ratatui::widgets::Borders;
@@ -397,7 +395,7 @@ fn preferences_tab(
     tab_data: UISettingsTabData,
 ) -> Block<'static> {
     let this_tab = SettingsTabs::Preferences;
-    let (selected_num, selected_tab, current_mode) = (
+    let (_selected_num, selected_tab, current_mode) = (
         tab_data.selected_setting,
         tab_data.selected_tab,
         tab_data.current_mode,
@@ -570,13 +568,13 @@ fn stats_tab(
             Style::default().fg(Color::DarkGray)
         })
         .left_aligned();
-        let username = |username: &str| -> String {
-            if username.is_empty() {
-                "-".to_string()
-            } else {
-                username.to_string()
-            }
-        }(stats_settings.pixela_username.as_deref().unwrap_or(" "));
+    let username = |username: &str| -> String {
+        if username.is_empty() {
+            "-".to_string()
+        } else {
+            username.to_string()
+        }
+    }(stats_settings.pixela_username.as_deref().unwrap_or(" "));
     let mut username_value = UIHelper::create_settings_paragraph(
         &username,
         Some(if stats_settings.stats_on {
@@ -639,8 +637,8 @@ impl HintProvider for SettingsTab<'_> {
             FooterHint::new("↑↓", "Select Settings"),
         ];
         let mut normal = vec![
-            FooterHint::new("<>", "Change tab"),
-            FooterHint::new("RET", "Select tab"),
+            FooterHint::new("<>", "Change group"),
+            FooterHint::new("RET", "Select group"),
         ];
 
         match self.settings.selected_setting {

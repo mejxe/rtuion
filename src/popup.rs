@@ -1,6 +1,5 @@
-use std::process::exit;
 
-use ratatui::widgets::{List, ListState};
+use ratatui::widgets::ListState;
 
 use crate::{app::App, stats::pixel::Pixel};
 

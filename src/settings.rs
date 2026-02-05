@@ -1,5 +1,4 @@
 use std::fs;
-use std::process::exit;
 
 use crate::error::{Result, SettingsError};
 use crate::stats::pixela::pixela_client::PixelaClient;
@@ -7,7 +6,7 @@ use crate::timers::counters::CounterMode;
 use crate::timers::timer::Timer;
 use crate::utils::settings_helper_structs::SettingsTabs;
 use crate::{
-    timers::*, BREAK_TIME_INCR, DEFAULT_BREAK, DEFAULT_ITERATIONS, DEFAULT_WORK, WORK_TIME_INCR,
+    BREAK_TIME_INCR, WORK_TIME_INCR,
 };
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use directories::ProjectDirs;

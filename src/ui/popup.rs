@@ -1,4 +1,3 @@
-use std::process::exit;
 
 use ratatui::{
     layout::{Alignment, Constraint, Flex, Layout, Margin, Rect},
@@ -109,7 +108,7 @@ impl Popup {
         no_paragraph.render(button_layout[1], buf);
     }
     fn render_error_popup(
-        message: &str,
+        _message: &str,
         area: Rect,
         buf: &mut ratatui::prelude::Buffer,
         error: &crate::error::Error,
@@ -345,7 +344,7 @@ fn render_scroll_indicators(
     let offset = list_state.offset();
     let list_height = list_inner.height as usize;
     let total_items = pixels.len();
-    let selected = list_state.selected().unwrap_or(0);
+    let _selected = list_state.selected().unwrap_or(0);
 
     if offset > 0 {
         let up_arrow = Paragraph::new("▲")

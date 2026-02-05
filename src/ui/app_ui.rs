@@ -1,18 +1,8 @@
 use super::{
-    pomodoro_tab::{self, PomodoroTab},
-    settings_tab::SettingsTab,
-    stats_tab::StatsTab,
-    ui_utils::FooterHint,
-    YELLOW,
+    pomodoro_tab::PomodoroTab, settings_tab::SettingsTab, stats_tab::StatsTab,
+    ui_utils::FooterHint, YELLOW,
 };
-use crate::{
-    app::{self, App},
-    settings::Mode,
-    stats::pixela::{pixela_client::PixelaClient, utils},
-    ui::ui_utils::HintProvider,
-    ui::BG,
-    utils::tabs,
-};
+use crate::{app::App, ui::ui_utils::HintProvider, ui::BG, utils::tabs};
 use ratatui::{
     self,
     buffer::Buffer,
@@ -70,7 +60,8 @@ impl Widget for &mut AppWidget<'_> {
                     return;
                 }
                 let pomodoro_tab = PomodoroTab::new(self.app_context.pomodoro());
-                let hints = pomodoro_tab.provide_hints();
+                let mut hints = pomodoro_tab.provide_hints();
+                hints.append(&mut self.provide_hints());
                 pomodoro_tab.render(layout[1], buf);
                 self.render_footer(layout[2], buf, hints);
             }

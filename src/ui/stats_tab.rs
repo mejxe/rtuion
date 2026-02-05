@@ -2,7 +2,7 @@ use crate::stats::pixel::Pixel;
 use crate::stats::pixela::pixela_client::{PixelaClient, PixelaTabs};
 use crate::stats::pixela::subjects::Subject;
 use crate::ui::ui_utils::FooterHint;
-use crate::ui::{BG, BLUE, GREEN, RED, YELLOW};
+use crate::ui::{BLUE, GREEN, RED, YELLOW};
 use ratatui::buffer::Buffer;
 use ratatui::layout::Constraint;
 use ratatui::layout::Direction;

@@ -1,13 +1,10 @@
-use std::process::exit;
-use std::rc::Rc;
-
 use crate::timers::counters::CounterMode;
 use crate::timers::helper_structs::TimerState;
 use crate::ui::assets::{ASCII_NUMBERS, BIG_ANIMATION_FRAMES};
-use crate::ui::{BG, BLUE, GREEN, RED, YELLOW};
+use crate::ui::{BLUE, GREEN, RED, YELLOW};
+use ratatui::layout::Alignment;
 use ratatui::layout::Direction;
 use ratatui::layout::Layout;
-use ratatui::layout::{Alignment, Rect};
 use ratatui::layout::{Constraint, Flex};
 use ratatui::style::Modifier;
 use ratatui::style::Style;
@@ -48,7 +45,7 @@ impl Widget for PomodoroTab<'_> {
             .border_type(BorderType::Rounded)
             .style(Style::default().fg(YELLOW));
 
-        if area.width < 75 || area.height < 25 {
+        if area.width < 75 || area.height < 30 {
             match self.pomodoro.timer.counter_mode() {
                 CounterMode::Countdown => self.render_compressed_pomodoro_ui(area, buf),
                 CounterMode::Countup => self.render_compressed_flowmodoro_ui(area, buf),
@@ -108,7 +105,7 @@ impl Widget for PomodoroTab<'_> {
         let layout_timer = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Min(3),     // Small gap
+                Constraint::Max(3),     // Small gap
                 Constraint::Length(1),  // Now text
                 Constraint::Max(5),     // Small gap
                 Constraint::Length(10), // ASCII timer
@@ -232,7 +229,7 @@ impl<'a> PomodoroTab<'a> {
             &format!("Next break time length: {break_time} seconds "),
             None,
         )
-                .alignment(text_align);
+        .alignment(text_align);
         let worked_for = match smol {
             false => format!(
                 "{:02} hrs, {:02} mins, {:02} secs",
@@ -340,7 +337,7 @@ impl<'a> PomodoroTab<'a> {
         let next_break_time = Paragraph::new(format!("NxtBreak: {break_time}"))
             .centered()
             .fg(YELLOW);
-let time_elapsed = self.pomodoro.timer.total_elapsed();
+        let time_elapsed = self.pomodoro.timer.total_elapsed();
         let worked_for = format!(
             "{:02}:{:02}:{:02}",
             time_elapsed / 3600,

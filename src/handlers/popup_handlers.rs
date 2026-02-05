@@ -1,4 +1,3 @@
-use std::process::exit;
 
 use crossterm::event::{KeyCode, KeyEvent};
 

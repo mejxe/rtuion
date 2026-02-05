@@ -1,11 +1,10 @@
-use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
+use crossterm::event::{KeyCode, KeyEvent};
 
 use crate::{
     app::{App, Event},
     popup::Popup,
     settings::Mode,
     stats::pixela::graph::Graph,
-    timers::{counters::CounterMode, helper_structs::TimerState},
     ui::popup::list_height,
     utils::tabs::Tabs,
 };
@@ -77,6 +76,11 @@ impl App {
         //global
         match key_event.code {
             KeyCode::Char('Q') => self.exit(),
+            KeyCode::BackTab
+                if self.popup().is_none() && !(self.settings().borrow().mode() == Mode::Input) =>
+            {
+                self.selected_tab_mut().prev();
+            }
             KeyCode::Tab
                 if self.popup().is_none() && !(self.settings().borrow().mode() == Mode::Input) =>
             {

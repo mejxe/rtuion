@@ -178,7 +178,7 @@ impl Graph {
             current.max(next.quantity_as_u64(&self.subject))
         })
     }
-    pub fn into_bars(&self) -> Vec<Bar> {
+    pub fn into_bars(&self) -> Vec<Bar<'_>> {
         self.data()
             .iter()
             .map(|dp| {

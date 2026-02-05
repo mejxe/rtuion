@@ -1,4 +1,3 @@
-use std::process::exit;
 
 use crate::error::{PixelaResponseError, Result, StatsError};
 
