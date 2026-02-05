@@ -1,13 +1,11 @@
 use std::fs;
 
-use crate::error::{Result, SettingsError};
+use crate::error::{Error, Result, SettingsError, StatsError};
 use crate::stats::pixela::pixela_client::PixelaClient;
 use crate::timers::counters::CounterMode;
 use crate::timers::timer::Timer;
 use crate::utils::settings_helper_structs::SettingsTabs;
-use crate::{
-    BREAK_TIME_INCR, WORK_TIME_INCR,
-};
+use crate::{BREAK_TIME_INCR, WORK_TIME_INCR};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use directories::ProjectDirs;
 use serde::*;
@@ -64,6 +62,17 @@ impl StatsSettings {
         }
         if self.pixela_token.is_none() {
             self.pixela_token = Some(String::new());
+        }
+    }
+    pub fn check_not_empty(&self) -> Result<()> {
+        match (self.pixela_username.clone(), self.pixela_token.clone()) {
+            (Some(name), Some(token)) => {
+                if name.is_empty() || token.is_empty() {
+                    return Err(Error::StatsError(StatsError::UserNotProvided()));
+                }
+                Ok(())
+            }
+            _ => Err(Error::StatsError(StatsError::UserNotProvided())),
         }
     }
 }

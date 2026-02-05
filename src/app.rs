@@ -205,6 +205,9 @@ impl App {
 
                         None => ("", ""),
                     };
+                popup = Error::handle_error_and_consume_data(
+                    self.settings.borrow().stats_setting.check_not_empty(),
+                );
                 if self
                     .pomodoro()
                     .check_pixela_changed(current_pixela_name, current_pixela_token)
@@ -212,8 +215,8 @@ impl App {
                     popup = Error::handle_error_and_consume_data(
                         self.pomodoro.try_init_pixela_client(),
                     );
-                    self.set_popup_opt(popup);
                 }
+                self.set_popup_opt(popup);
             }
             false => {
                 self.pomodoro.clear_pixela();

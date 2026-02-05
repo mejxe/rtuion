@@ -10,10 +10,8 @@ RTuion [ˈtujɔn] is a simple terminal interface timer with some extra features.
 
 ## Installation
 ### Build manually
-Clone and build it with cargo 
-
 ```
-git clone https://github.com/mejxe/rtuion.git
+cargo install --git https://github.com/mejxe/rtuion.git
 ```
 
 ### Release
