@@ -113,7 +113,7 @@ impl App {
     ) -> std::io::Result<()> {
         let mut reader = EventStream::new();
         let mut last_event_time = Instant::now();
-        let debounce_time = Duration::from_millis(100);
+        let debounce_time = Duration::from_millis(50);
         loop {
             tokio::select! {
                 _ = cancel_token.cancelled() => {
