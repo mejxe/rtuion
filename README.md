@@ -21,3 +21,8 @@ TODO!
 ![Timer](images/timer.png)
 ![Settings](images/settings.png)
 ![Stats](images/stats.png)
+
+This project uses cargo-dist for packing releases.
+
+## License
+rtuion is licensed under MIT license.
