@@ -13,5 +13,5 @@ pub const DEFAULT_ITERATIONS: u8 = 4;
 pub const DEFAULT_BREAK: i64 = 300;
 pub const WORK_TIME_INCR: i64 = 900;
 pub const BREAK_TIME_INCR: i64 = 60;
-pub const HOUR_INCREMENT: usize = 60;
-pub const MINUTES_INCREMENT: usize = 15;
+pub const MIN_HOUR_INCREMENT: usize = 60;
+pub const MIN_MINS_INCREMENT: usize = 15;

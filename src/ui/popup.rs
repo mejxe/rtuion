@@ -1,3 +1,4 @@
+use std::process::exit;
 
 use ratatui::{
     layout::{Alignment, Constraint, Flex, Layout, Margin, Rect},
@@ -9,7 +10,7 @@ use ratatui::{
 
 use crate::{
     popup::{Popup, PopupKind},
-    stats::pixel::Pixel,
+    stats::{pixel::Pixel, pixela::complex_pixel::IsRounded},
 };
 
 use super::{stats_tab::PixelToListWrapper, BG, GREEN, RED, YELLOW};
@@ -169,7 +170,6 @@ impl Popup {
             ])
             .split(area);
 
-        // Question/message paragraph
         let question_paragraph = Paragraph::new(message)
             .alignment(Alignment::Center)
             .style(Style::default().fg(Color::White))
@@ -188,9 +188,11 @@ impl Popup {
         let pixel_items: Vec<ListItem> = pixels
             .iter()
             .map(|pix| {
+                let rounded = pix.check_if_value_rounded();
                 PixelToListWrapper {
                     pixel: pix,
                     selected: true,
+                    rounded,
                 }
                 .into()
             })
@@ -281,6 +283,7 @@ impl Popup {
                 PixelToListWrapper {
                     pixel: pix,
                     selected: true,
+                    rounded: IsRounded::No,
                 }
                 .into()
             })

@@ -1,5 +1,7 @@
-
-use crate::error::{PixelaResponseError, Result, StatsError};
+use crate::{
+    error::{PixelaResponseError, Result, StatsError},
+    MIN_MINS_INCREMENT,
+};
 
 use super::{
     complex_pixel::ComplexPixel,
@@ -60,7 +62,7 @@ pub async fn send_to_pixela(
     let request = client
         .put(url)
         .json(&serde_json::json!({
-        "quantity":pixel.progress().to_string()
+        "quantity":pixel.sendable_string()
             }))
         .header("X-USER-TOKEN", api_key)
         .send()
@@ -87,10 +89,27 @@ pub async fn send_to_pixela(
     }
 }
 pub fn check_if_quantity_is_big_enough(pixel: &ComplexPixel) -> Result<()> {
-    if *pixel.subject().unit() == SubjectUnit::Hours
-        && *pixel.subject().data_type() == SubjectDataType::Int
-        && pixel.progress().get_as_int() < 1
-    {
+    let unit = pixel.subject().unit().clone();
+    let dtype = pixel.subject().data_type().clone();
+    let invalid = match (unit, dtype) {
+        (SubjectUnit::Hours, SubjectDataType::Int)
+            if pixel.progress().hours(&SubjectUnit::Minutes) < 1.0 =>
+        {
+            true
+        }
+        (SubjectUnit::Minutes, SubjectDataType::Int)
+            if pixel.progress().minutes(&SubjectUnit::Minutes) < MIN_MINS_INCREMENT =>
+        {
+            true
+        }
+        (SubjectUnit::Hours, SubjectDataType::Float)
+            if pixel.progress().hours(&SubjectUnit::Minutes) < 0.25 =>
+        {
+            true
+        }
+        _ => false,
+    };
+    if invalid {
         return Err(StatsError::QuantityIsNotBigEnough.into());
     }
     Ok(())

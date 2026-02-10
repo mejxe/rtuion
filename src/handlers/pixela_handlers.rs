@@ -5,7 +5,7 @@ use crate::{
     error::Error,
     popup::Popup,
     settings::PomodoroSettings,
-    stats::pixela::pixela_client::PixelaTabs,
+    stats::pixela::pixela_client::{PixelaClient, PixelaTabs},
 };
 
 impl App {
@@ -30,7 +30,7 @@ impl App {
                                 }),
                             ));
                         } else {
-                            self.pomodoro_mut().set_current_subject_index(index);
+                            self.ask_overwrite_subject(index);
                         }
                         if let Some(subject) = self.pomodoro().get_current_subject() {
                             let time = (subject.get_min_increment() * 60) as i64;
@@ -60,7 +60,8 @@ impl App {
                         && !pixela_client.pixels_to_send_is_empty()
                         && pixela_client.logged_in) =>
                 {
-                    let pixels = pixela_client.get_selected_pixels();
+                    let pixels =
+                        PixelaClient::combine_similiar_pixels(pixela_client.get_selected_pixels());
                     self.set_popup(Popup::pixel_confirm_list(
                         "These pixels will be sent".into(),
                         Box::new(App::ask_send_pixels),

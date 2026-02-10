@@ -17,7 +17,7 @@ impl PixelaUser {
         }
     }
     pub fn validate_not_empty(&self) -> bool {
-        if self.username().is_empty() || self.token().is_empty() {
+        if self.username().is_empty() {
             return false;
         };
         true

@@ -1,8 +1,11 @@
-use std::{collections::HashMap, fs, future::Future, time::Duration, vec};
+use std::{collections::HashMap, fs, future::Future, process::exit, time::Duration, vec};
 
 use crate::{
     error::{Error, FatalError, PixelaResponseError, Result, SettingsError, StatsError},
-    stats::pixel::{Pixel, SimplePixel},
+    stats::{
+        pixel::{Pixel, SimplePixel},
+        pixela::subjects::SubjectDataType,
+    },
 };
 use chrono::{DateTime, Local};
 use directories::ProjectDirs;
@@ -15,7 +18,7 @@ use super::{
     complex_pixel::ComplexPixel,
     graph::Graph,
     pixela_user::PixelaUser,
-    subjects::{Progress, Subject},
+    subjects::{Progress, Subject, SubjectUnit},
     utils::StatefulList,
 };
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -97,11 +100,11 @@ impl PixelaClient {
                 date.format("%Y/%m/%d %H:%M").to_string(),
             )));
         }
-    }
-    pub fn select_pixel(&mut self, index: usize) {
-        if index > self.pixels_to_send.len() - 1 {
+        if self.pixels.items().len() > self.pixels_to_send.len() {
             self.update_pixels_to_send_size();
         }
+    }
+    pub fn select_pixel(&mut self, index: usize) {
         if let Some(Pixel::Complex(_)) = self.pixels().get(index) {
             self.pixels_to_send[index] = 1
         }
@@ -120,7 +123,7 @@ impl PixelaClient {
         !self.pixels_to_send.contains(&1)
     }
     pub fn save_pixels(&self) -> Result<()> {
-        let path = ProjectDirs::from("romodoro", "mejxedev", "romodoro")
+        let path = ProjectDirs::from("rtuion", "rtuion", "rtuion")
             .ok_or(SettingsError::HomeDirNotFound)?;
         let path = path.config_dir();
         let path = path.join("pixels");
@@ -133,7 +136,7 @@ impl PixelaClient {
         Ok(())
     }
     fn load_pixels(user: &PixelaUser) -> Result<Vec<Pixel>> {
-        let path = ProjectDirs::from("romodoro", "mejxedev", "romodoro")
+        let path = ProjectDirs::from("rtuion", "rtuion", "rtuion")
             .ok_or(SettingsError::HomeDirNotFound)?;
         let path = path.config_dir();
         let path = path.join("pixels");
@@ -186,11 +189,11 @@ impl PixelaClient {
                             time::sleep(Duration::from_millis(100)).await;
                         }
                         Error::PixelaResponseError(PixelaResponseError::FatalError(_, _)) => {
+                            // if not expected fatal error write it back to store later
                             unresolved_pixels.push(Pixel::Complex(pixel.clone()));
                             errors.push(err.try_into()?);
                         }
                         _ => {
-                            // if not expected/fatal error variant write it back to store later
                             unresolved_pixels.push(Pixel::Complex(pixel.clone()));
                             errors.push(FatalError::new(err.to_string(), StatusCode::IM_A_TEAPOT));
                         }
@@ -210,7 +213,7 @@ impl PixelaClient {
         Ok(resolved_pixels)
     }
     pub async fn send_pixels(&mut self) -> Result<Vec<Pixel>> {
-        let pixel_pool = self.take_pixels_combined();
+        let pixel_pool = PixelaClient::combine_similiar_pixels(self.take_selected_pixels(true));
         let operation = |pixel: ComplexPixel, client: Client, user: PixelaUser| async move {
             let response = pixel.upload(client, &user).await;
             (pixel, response)
@@ -307,18 +310,35 @@ impl PixelaClient {
             .await?;
         match request.error_for_status() {
             Ok(request) => {
-                let json_data: Value = request.json().await?;
-                let graphs_value = &json_data["graphs"];
-                let mut subjects: Vec<Subject> =
-                    serde_json::from_value(graphs_value.clone()).unwrap();
-                for subject in &mut subjects {
-                    subject.set_url(format!(
-                        "https://pixe.la/v1/users/{}/graphs/{}",
-                        username,
-                        subject.id()
-                    ));
+                let mut json_data: Value = request.json().await?;
+                if let Some(graphs_value) = json_data["graphs"].take().as_array_mut() {
+                    let mut subjects: Vec<Subject> = graphs_value
+                        .iter_mut()
+                        .filter_map(|subject| serde_json::from_value(subject.take()).ok())
+                        .filter_map(|subject: Subject| {
+                            match *subject.unit() == SubjectUnit::Minutes
+                                && *subject.data_type() == SubjectDataType::Float
+                            {
+                                true => None,
+                                false => Some(subject),
+                            }
+                        })
+                        .collect();
+                    for subject in &mut subjects {
+                        subject.set_url(format!(
+                            "https://pixe.la/v1/users/{}/graphs/{}",
+                            username,
+                            subject.id()
+                        ));
+                    }
+                    Ok(subjects)
+                } else {
+                    Err(PixelaResponseError::FatalError(
+                        "Request sucessful but response not serializable".to_string(),
+                        reqwest::StatusCode::NO_CONTENT,
+                    )
+                    .into())
                 }
-                Ok(subjects)
             }
             Err(err) => {
                 if let Some(status) = err.status() {
@@ -425,21 +445,20 @@ impl PixelaClient {
             .filter_map(|index| self.pixels.items().get(*index).cloned())
             .collect()
     }
-    pub fn take_pixels_combined(&mut self) -> Vec<Pixel> {
-        let pixels: Vec<Pixel> = self
-            .take_selected_pixels(true)
+    pub fn combine_similiar_pixels(pixels: Vec<Pixel>) -> Vec<Pixel> {
+        let pixels: Vec<Pixel> = pixels
             .into_iter()
             .filter_map(|pixel| match pixel {
                 Pixel::Complex(pixel) => Some(pixel),
                 Pixel::Simple(_) => None,
             })
             .fold(
-                HashMap::<(String, Subject), (i32, usize)>::new(),
+                HashMap::<(String, Subject), (usize, usize)>::new(),
                 // (Date, Subject): (total_quantity, values_summed_up)
                 |mut acc, pixel| {
                     let key = (pixel.date_no_time().clone(), pixel.subject().clone());
                     let total_quantity = acc.entry(key).or_insert((0, 0));
-                    total_quantity.0 += pixel.progress().hours(pixel.subject().unit());
+                    total_quantity.0 += pixel.progress().minutes(&SubjectUnit::Minutes) as usize; //
                     total_quantity.1 += 1;
                     acc
                 },

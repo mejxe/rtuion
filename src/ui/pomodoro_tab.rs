@@ -111,7 +111,7 @@ impl Widget for PomodoroTab<'_> {
                 Constraint::Length(10), // ASCII timer
                 Constraint::Length(3),  // ASCII Spacer
                 Constraint::Length(7),  // ASCII Animation
-                Constraint::Length(0),  // ASCII Spacer
+                Constraint::Length(1),  // ASCII Spacer
                 Constraint::Max(3),     // Pomodoro/Flowmodoro layouts
             ])
             .flex(ratatui::layout::Flex::Center)
@@ -155,6 +155,7 @@ impl Widget for PomodoroTab<'_> {
         } else {
             5
         };
+        self.render_subject_select(layout[layout_spot - 1], buf);
         match self.pomodoro.timer.counter_mode() {
             CounterMode::Countdown => self.render_pomodoro_ui(layout[layout_spot], buf),
             CounterMode::Countup => self.render_flowmodoro_ui(layout[layout_spot], buf),
@@ -268,7 +269,6 @@ impl<'a> PomodoroTab<'a> {
         let pomodoro_layout = Layout::vertical(vec![
             Constraint::Length(1),
             Constraint::Length(1),
-            Constraint::Length(1),
             Constraint::Length(3),
         ])
         .split(area);
@@ -296,10 +296,9 @@ impl<'a> PomodoroTab<'a> {
             .direction(Direction::Horizontal)
             .constraints([Constraint::Percentage(60)])
             .flex(ratatui::layout::Flex::Center)
-            .split(pomodoro_layout[3]);
+            .split(pomodoro_layout[2]);
         count_paragraph.render(pomodoro_layout[1], buf);
         gauge.render(gauge_layout[0], buf);
-        self.render_subject_select(pomodoro_layout[0], buf);
     }
     fn render_compressed_flowmodoro_ui(
         &self,

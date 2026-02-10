@@ -3,7 +3,8 @@ use strum_macros::Display;
 
 use crate::{
     error::{Result, StatsError},
-    HOUR_INCREMENT, MINUTES_INCREMENT,
+    utils::misc,
+    MIN_HOUR_INCREMENT, MIN_MINS_INCREMENT,
 };
 
 use super::graph::PixelaColors;
@@ -32,10 +33,18 @@ pub enum SubjectDataType {
 }
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Display, PartialOrd, Hash)]
 pub enum SubjectUnit {
-    #[serde(rename = "minutes")]
+    #[serde(rename = "minutes", alias = "Minutes", alias = "mins", alias = "Mins")]
     Minutes,
-    #[serde(rename = "hours")]
+    #[serde(rename = "hours", alias = "hrs", alias = "Hours")]
     Hours,
+}
+impl SubjectUnit {
+    pub fn short_string(&self) -> String {
+        match self {
+            SubjectUnit::Hours => "h".to_string(),
+            SubjectUnit::Minutes => "m".to_string(),
+        }
+    }
 }
 
 impl Subject {
@@ -73,17 +82,6 @@ impl Subject {
     pub fn is_dummy(&self) -> bool {
         self.graph_name == *"None" && self.id == *""
     }
-    pub fn transform_progress(&self, duration: i64) -> Progress {
-        let mut progress: Progress = match self.data_type {
-            SubjectDataType::Int => Progress::from(duration as i32),
-            SubjectDataType::Float => Progress::from(duration as f64),
-        };
-        match self.unit {
-            SubjectUnit::Minutes => progress.divide(60),
-            SubjectUnit::Hours => progress.divide(3600),
-        };
-        progress
-    }
 
     pub fn url(&self) -> &str {
         &self.url
@@ -115,40 +113,85 @@ impl Subject {
     pub fn set_graph_name(&mut self, graph_name: String) {
         self.graph_name = graph_name;
     }
-    pub fn get_min_increment(&self) -> usize {
+    pub fn get_min_increment(&self) -> Minutes {
         // in minutes
         match self.unit() {
-            SubjectUnit::Hours if *self.data_type() == SubjectDataType::Float => MINUTES_INCREMENT,
-            SubjectUnit::Hours => HOUR_INCREMENT,
-            SubjectUnit::Minutes => MINUTES_INCREMENT,
+            SubjectUnit::Hours if *self.data_type() == SubjectDataType::Float => MIN_MINS_INCREMENT,
+            SubjectUnit::Hours => MIN_HOUR_INCREMENT,
+            SubjectUnit::Minutes => MIN_MINS_INCREMENT,
+        }
+    }
+
+    pub fn set_unit(&mut self, unit: SubjectUnit) {
+        self.unit = unit;
+    }
+    pub fn set_datatype(&mut self, data_type: SubjectDataType) {
+        self.data_type = data_type;
+    }
+}
+pub enum TimeUnit {
+    Hours(Hours),
+    Minutes(Minutes),
+    Seconds(Seconds),
+}
+pub type Hours = f64;
+pub type HoursRounded = usize;
+pub type Minutes = usize;
+pub type Seconds = i64;
+impl TimeUnit {
+    pub fn round_hours(hours: Hours) -> HoursRounded {
+        let f_part = hours % 1.0;
+        if (f_part > 0.8) {
+            return hours.ceil() as usize;
+        } else {
+            return hours.floor() as usize;
         }
     }
 }
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub enum Progress {
-    Int(i32),
-    Float(f64),
+    Int(Minutes),
+    Float(Hours),
 }
 impl Progress {
-    pub fn get_as_int(&self) -> i32 {
-        match self {
-            Progress::Int(num) => *num,
-            Progress::Float(num) => num.floor() as i32,
+    pub fn new_minutes(time: TimeUnit) -> Progress {
+        match time {
+            TimeUnit::Minutes(mins) => Progress::Int(mins),
+            TimeUnit::Hours(hours) => Progress::Int((hours * 60.0) as usize),
+            TimeUnit::Seconds(seconds) => Progress::Int((seconds / 60) as usize),
         }
     }
-    pub fn divide(&mut self, divider: i32) {
+    pub fn get_as_int(&self) -> usize {
+        match self {
+            Progress::Int(num) => *num,
+            Progress::Float(num) => TimeUnit::round_hours(*num) as usize,
+        }
+    }
+    pub fn get_as_float(&self) -> f64 {
+        match self {
+            Progress::Int(num) => *num as f64,
+            Progress::Float(num) => *num,
+        }
+    }
+    pub fn divide(&mut self, divider: usize) {
         match self {
             Progress::Float(num) => *num /= divider as f64,
             Progress::Int(num) => *num /= divider,
         }
     }
-    pub fn minutes(&self, unit: &SubjectUnit) -> i32 {
+    pub fn minutes(&self, unit: &SubjectUnit) -> Minutes {
         match unit {
             SubjectUnit::Hours => self.get_as_int() * 60,
             SubjectUnit::Minutes => self.get_as_int(),
         }
     }
-    pub fn hours(&self, unit: &SubjectUnit) -> i32 {
+    pub fn hours(&self, unit: &SubjectUnit) -> Hours {
+        match unit {
+            SubjectUnit::Hours => misc::round_to_precision(self.get_as_float(), 2),
+            SubjectUnit::Minutes => misc::round_to_precision(self.get_as_float() / 60.0, 2),
+        }
+    }
+    pub fn hours_floored(&self, unit: &SubjectUnit) -> HoursRounded {
         match unit {
             SubjectUnit::Hours => self.get_as_int(),
             SubjectUnit::Minutes => self.get_as_int() / 60,

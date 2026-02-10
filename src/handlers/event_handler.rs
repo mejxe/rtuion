@@ -79,11 +79,13 @@ impl App {
             KeyCode::BackTab
                 if self.popup().is_none() && !(self.settings().borrow().mode() == Mode::Input) =>
             {
+                self.settings().borrow_mut().change_mode(Mode::Normal);
                 self.selected_tab_mut().prev();
             }
             KeyCode::Tab
                 if self.popup().is_none() && !(self.settings().borrow().mode() == Mode::Input) =>
             {
+                self.settings().borrow_mut().change_mode(Mode::Normal);
                 self.selected_tab_mut().next();
             }
             _ => {}
@@ -91,6 +93,7 @@ impl App {
         let list_height = list_height(&self.popup_size());
         if let Some(popup) = self.take_popup() {
             self.handle_popups(key_event, popup, list_height).await;
+            return;
         };
         let settings_mode = self.settings().borrow().mode();
         match self.selected_tab() {
@@ -104,7 +107,7 @@ impl App {
         }
     }
     async fn overwrite_timer_for_subject(&mut self, index: usize) {
-        self.pomodoro_mut().timer.restart().await;
+        self.pomodoro_mut().restart_timer().await;
         self.pomodoro_mut().set_current_subject_index(index);
     }
 }

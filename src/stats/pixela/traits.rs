@@ -2,6 +2,8 @@ use std::fmt::Display;
 
 use serde::{Deserialize, Serialize};
 
+use crate::stats::pixela::subjects::{Minutes, SubjectUnit};
+
 use super::{subjects::Progress, utils::StatefulList};
 
 impl<T> Default for StatefulList<T> {
@@ -12,7 +14,7 @@ impl<T> Default for StatefulList<T> {
 impl std::ops::AddAssign<usize> for Progress {
     fn add_assign(&mut self, rhs: usize) {
         match self {
-            Progress::Int(i) => *i += rhs as i32,
+            Progress::Int(i) => *i += rhs as usize,
             Progress::Float(f) => *f += rhs as f64,
         }
     }
@@ -50,7 +52,7 @@ impl<'de> Deserialize<'de> for Progress {
         };
 
         if num.fract() == 0.0 && num.abs() < i32::MAX as f64 {
-            Ok(Progress::Int(num as i32))
+            Ok(Progress::Int(num as Minutes))
         } else {
             Ok(Progress::Float(num))
         }
@@ -59,21 +61,21 @@ impl<'de> Deserialize<'de> for Progress {
 impl Display for Progress {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Progress::Int(i) => write!(f, "{}", i),
-            Progress::Float(i) => write!(f, "{}", i),
+            Progress::Int(_) => write!(f, "{}", self.hours_floored(&SubjectUnit::Minutes)),
+            Progress::Float(_) => write!(f, "{}", self.hours_floored(&SubjectUnit::Hours)),
         }
     }
 }
-impl From<i32> for Progress {
-    fn from(value: i32) -> Self {
+impl From<usize> for Progress {
+    fn from(value: usize) -> Self {
         Progress::Int(value)
     }
 }
-impl Into<i32> for Progress {
-    fn into(self) -> i32 {
+impl Into<usize> for Progress {
+    fn into(self) -> usize {
         match self {
             Progress::Int(int) => int,
-            Progress::Float(f) => f as i32,
+            Progress::Float(f) => f as usize,
         }
     }
 }

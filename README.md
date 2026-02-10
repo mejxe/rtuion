@@ -15,14 +15,24 @@ cargo install --git https://github.com/mejxe/rtuion.git
 ```
 
 ### Release
-TODO!
+This project uses cargo-dist for packing releases.
+Simply check out the newest release and follow the steps there.
+Alternatively if you have cargo installed you can download it with cargo binstall
+```
+cargo binstall --git https://github.com/mejxe/rtuion.git
+```
+
+## Stats Tracking/Pixela Integration
+RTuion makes it possible to log your study sessions. To use it to the full potential you will have to make a [pixe.la](https://pixe.la/) account.
+The service is free (altough I encourage you to support pixe.la creator) and works great for tracking your progress.
+
+If you do not wish to use remote stats tracking, you can use the simple mode that will log your study sessions locally (you still have to provide username in the settings!).
 
 ## Gallery
 ![Timer](images/timer.png)
 ![Settings](images/settings.png)
 ![Stats](images/stats.png)
 
-This project uses cargo-dist for packing releases.
 
 ## License
 rtuion is licensed under MIT license.

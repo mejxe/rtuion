@@ -1,4 +1,4 @@
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, process::exit, rc::Rc};
 
 use tokio_util::sync::CancellationToken;
 
@@ -6,26 +6,30 @@ use crate::{
     app::Event,
     error::{Result, StatsError},
     settings::{PomodoroSettings, Settings},
-    stats::pixela::{pixela_client::PixelaClient, pixela_user::PixelaUser, subjects::Subject},
+    stats::pixela::{
+        pixela_client::PixelaClient,
+        pixela_user::PixelaUser,
+        subjects::{Minutes, Progress, Seconds, Subject, TimeUnit},
+    },
     timers::{
         helper_structs::{TimerCommand, TimerState},
         timer::Timer,
     },
-    HOUR_INCREMENT,
+    MIN_HOUR_INCREMENT,
 };
 
 #[derive(Debug)]
 pub struct Pomodoro {
     pub timer: Timer,
-    time_sender: tokio::sync::mpsc::Sender<i64>,
+    time_sender: tokio::sync::mpsc::Sender<Seconds>,
     command_rx: Option<tokio::sync::mpsc::Receiver<TimerCommand>>,
     settings: Rc<RefCell<Settings>>,
     pixela_client: Option<PixelaClient>,
-    duration_since_last_save: i64,
+    duration_since_last_save: Seconds,
 }
 impl Pomodoro {
     pub fn new(
-        time_sender: tokio::sync::mpsc::Sender<i64>,
+        time_sender: tokio::sync::mpsc::Sender<Seconds>,
         command_rx: tokio::sync::mpsc::Receiver<TimerCommand>,
         command_tx: tokio::sync::mpsc::Sender<TimerCommand>,
         settings: Rc<RefCell<Settings>>,
@@ -66,7 +70,7 @@ impl Pomodoro {
     pub fn try_init_pixela_client(&mut self) -> Result<()> {
         let px_stats = &mut self.settings.borrow_mut().stats_setting;
         if px_stats.stats_on {
-            if px_stats.pixela_username.is_none() || px_stats.pixela_token.is_none() {
+            if px_stats.pixela_username.is_none() {
                 px_stats.init_stats();
                 return Err(StatsError::UserNotProvided().into());
             }
@@ -117,15 +121,17 @@ impl Pomodoro {
         self.timer.set_setting(setting).await
     }
     pub fn log_pixel_from_duration(&mut self) -> Result<()> {
+        if self.duration_since_last_save < 60 {
+            return Err(crate::error::Error::StatsError(
+                StatsError::QuantityIsNotBigEnough,
+            ));
+        }
+
         if let Some(client) = &self.pixela_client {
             let date = chrono::Local::now();
             let subject = client.get_current_subject();
-            let duration = subject
-                .as_ref()
-                // default simply logs minutes
-                .map_or(((self.duration_since_last_save / 60) as i32).into(), |s| {
-                    s.transform_progress(self.duration_since_last_save)
-                });
+            let duration =
+                Progress::new_minutes(TimeUnit::Seconds(self.duration_since_last_save + 1));
             if let Some(client) = self.pixela_client.as_mut() {
                 client.add_pixel(date, subject, duration);
                 client.save_pixels()?;
@@ -136,19 +142,19 @@ impl Pomodoro {
             Err(crate::error::StatsError::StatsTrackingTurnedOff().into())
         }
     }
-    pub async fn handle_timer_tick(&mut self, time: i64) -> Result<()> {
+    pub async fn handle_timer_tick(&mut self, time: Seconds) -> Result<()> {
         self.handle_logging(time)?;
         self.timer.handle_timer_response(time).await;
         self.duration_since_last_save += 1;
         Ok(())
     }
-    fn handle_logging(&mut self, time: i64) -> Result<()> {
-        let increment: i64;
+    fn handle_logging(&mut self, time: Seconds) -> Result<()> {
+        let increment: Seconds;
         let current_state = self.timer.current_state();
         if let Some(sub) = self.get_current_subject() {
-            increment = (sub.get_min_increment() * 10) as i64;
+            increment = (sub.get_min_increment() * 60) as Seconds;
         } else {
-            increment = (HOUR_INCREMENT * 10) as i64;
+            increment = (MIN_HOUR_INCREMENT * 60) as Seconds;
         }
 
         if let TimerState::Work(_) = current_state {
@@ -189,5 +195,9 @@ impl Pomodoro {
     }
     pub fn clear_pixela(&mut self) {
         self.pixela_client = None;
+    }
+    pub async fn restart_timer(&mut self) {
+        self.timer.restart().await;
+        self.duration_since_last_save = 3595;
     }
 }

@@ -65,9 +65,9 @@ impl StatsSettings {
         }
     }
     pub fn check_not_empty(&self) -> Result<()> {
-        match (self.pixela_username.clone(), self.pixela_token.clone()) {
-            (Some(name), Some(token)) => {
-                if name.is_empty() || token.is_empty() {
+        match self.pixela_username.clone() {
+            Some(name) => {
+                if name.is_empty() {
                     return Err(Error::StatsError(StatsError::UserNotProvided()));
                 }
                 Ok(())
@@ -79,7 +79,7 @@ impl StatsSettings {
 
 impl Settings {
     pub fn save_to_file(&self) -> Result<()> {
-        let path = ProjectDirs::from("romodoro", "romodoro", "romodoro")
+        let path = ProjectDirs::from("rtuion", "rtuion", "rtuion")
             .ok_or(SettingsError::HomeDirNotFound)?;
         let path = path.config_dir();
         if !path.exists() {
@@ -91,7 +91,7 @@ impl Settings {
         Ok(())
     }
     pub fn new() -> Result<Settings> {
-        let path = ProjectDirs::from("romodoro", "romodoro", "romodoro")
+        let path = ProjectDirs::from("rtuion", "rtuion", "rtuion")
             .ok_or(SettingsError::HomeDirNotFound)?;
         let path = path.config_dir();
 
@@ -152,10 +152,10 @@ impl Settings {
         match self.selected_tab {
             SettingsTabs::Mode => self.timer_settings.mode.next(),
             SettingsTabs::Pomodoro => match self.selected_setting {
-                0 if self.timer_settings.work_time - WORK_TIME_INCR != 0 => {
-                    self.timer_settings.work_time = 10;
+                0 if self.timer_settings.work_time - WORK_TIME_INCR > 0 => {
+                    self.timer_settings.work_time -= WORK_TIME_INCR;
                 }
-                1 if self.timer_settings.break_time - BREAK_TIME_INCR != 0 => {
+                1 if self.timer_settings.break_time - BREAK_TIME_INCR > 0 => {
                     self.timer_settings.break_time -= BREAK_TIME_INCR
                 }
                 2 if self.timer_settings.iterations - 1 > 0 => self.timer_settings.iterations -= 1,

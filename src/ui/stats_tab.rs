@@ -1,8 +1,9 @@
 use crate::stats::pixel::Pixel;
+use crate::stats::pixela::complex_pixel::IsRounded;
 use crate::stats::pixela::pixela_client::{PixelaClient, PixelaTabs};
-use crate::stats::pixela::subjects::Subject;
+use crate::stats::pixela::subjects::{Subject, SubjectUnit};
 use crate::ui::ui_utils::FooterHint;
-use crate::ui::{BLUE, GREEN, RED, YELLOW};
+use crate::ui::{BLUE, GREEN, ORANGE, RED, YELLOW};
 use ratatui::buffer::Buffer;
 use ratatui::layout::Constraint;
 use ratatui::layout::Direction;
@@ -57,7 +58,6 @@ impl Widget for &mut StatsTab<'_> {
         self.render_subjects(right_column_layout[1], buf);
 
         self.render_graph(main_layout[1], buf);
-
     }
 }
 
@@ -104,6 +104,7 @@ impl<'a> StatsTab<'a> {
                         PixelToListWrapper {
                             pixel: pix,
                             selected: self.pixela_client.selected_to_send(index),
+                            rounded: IsRounded::No,
                         }
                         .into()
                     })
@@ -199,7 +200,11 @@ impl<'a> StatsTab<'a> {
                     .map(|subject| {
                         SubjectToListWrapper {
                             subject,
-                            selected: self.pixela_client.get_current_subject().unwrap_or_else(|| self.pixela_client.get_subject(0).unwrap()) == **subject,
+                            selected: self
+                                .pixela_client
+                                .get_current_subject()
+                                .unwrap_or_else(|| self.pixela_client.get_subject(0).unwrap())
+                                == **subject,
                         }
                         .into()
                     })
@@ -236,33 +241,49 @@ impl<'a> StatsTab<'a> {
 pub(crate) struct PixelToListWrapper<'a> {
     pub(crate) pixel: &'a Pixel,
     pub(crate) selected: bool,
+    pub(crate) rounded: IsRounded,
 }
 impl From<PixelToListWrapper<'_>> for ListItem<'_> {
     fn from(value: PixelToListWrapper) -> Self {
-        let pixel_text = match value.pixel {
-            Pixel::Complex(complex) => {
+        let (rounded, rounded_to) = if let IsRounded::Yes(rounded_to) = value.rounded {
+            (true, rounded_to)
+        } else {
+            (false, 0)
+        };
+        let (pixel_text, unit) = match value.pixel {
+            Pixel::Complex(complex) => (
                 format!(
-                    " {} | {} | {}m",
+                    " {} | {} | {}",
                     complex.subject().graph_name(),
                     complex.date().split('T').next().unwrap_or("N/A"),
-                    complex.progress().minutes(complex.subject().unit())
-                )
-            }
-            Pixel::Simple(simple) => {
+                    complex.display_string(),
+                ),
+                complex.subject().unit().clone(),
+            ),
+            Pixel::Simple(simple) => (
                 format!(
                     " {} | {}m",
                     simple.date().split('T').next().unwrap_or("N/A"),
                     simple.progress()
-                )
-            }
+                ),
+                SubjectUnit::Minutes,
+            ),
         };
-        let line = match value.selected {
-            false if matches!(value.pixel, Pixel::Simple(_)) => Line::styled(
+        let unit_display = unit.short_string();
+        let line = match (value.selected, rounded) {
+            (false, _) if matches!(value.pixel, Pixel::Simple(_)) => Line::styled(
                 format!("  {}", pixel_text),
                 Style::default().fg(Color::Gray),
             ),
-            true => Line::styled(format!(" ✓ {}", pixel_text), Style::default().fg(GREEN)),
-            false => Line::styled(
+            (true, false) => Line::styled(format!(" ✓ {}", pixel_text), Style::default().fg(GREEN)),
+            (true, true) => Line::styled(
+                format!(
+                    " ✓ {}| rounded: {}{}!",
+                    pixel_text, rounded_to, unit_display
+                ),
+                Style::default().fg(ORANGE),
+            ),
+            (false, _) => Line::styled(
                 format!(" ☐ {}", pixel_text),
                 Style::default().fg(Color::White),
             ),
@@ -276,16 +297,23 @@ pub(crate) struct SubjectToListWrapper<'a> {
 }
 impl From<SubjectToListWrapper<'_>> for ListItem<'_> {
     fn from(value: SubjectToListWrapper) -> Self {
-        let subject_text = value.subject.graph_name().to_string();
+        let subject_text = format!(
+            "{} | unit: {}",
+            value.subject.graph_name().to_string(),
+            value.subject.unit()
+        );
 
-        let line = match value.selected {
-            true if value.subject.is_dummy() => 
-                 Line::styled(subject_text, Style::default().fg(GREEN)).into(),
-            true => 
-                 Line::styled(
+        let line = match (value.selected, value.subject.is_dummy()) {
+            (true, true) => Line::styled("None", Style::default().fg(GREEN)).into(),
+            (true, false) => Line::styled(
                 format!("{} [Tracking]", subject_text),
-                Style::default().fg(GREEN)).into(),
-            false => Line::styled(subject_text.to_string(), Style::default().fg(Color::White)),
+                Style::default().fg(GREEN),
+            )
+            .into(),
+            (false, false) => {
+                Line::styled(subject_text.to_string(), Style::default().fg(Color::White))
+            }
+            (false, true) => Line::styled("None", Style::default().fg(Color::White)),
         };
         ListItem::new(line)
     }

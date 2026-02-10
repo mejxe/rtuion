@@ -1,10 +1,10 @@
-
 use crossterm::event::{KeyCode, KeyEvent};
 
 use crate::{
     app::{App, Event},
+    error::Error,
     popup::Popup,
-    timers::counters::CounterMode,
+    timers::{counters::CounterMode, helper_structs::TimerState},
 };
 
 impl App {
@@ -21,6 +21,9 @@ impl App {
                         && self.pomodoro().timer.get_running() =>
                 {
                     self.pomodoro_mut().timer.next_iteration().await;
+                    if let TimerState::Break(_) = self.pomodoro().timer.current_state() {
+                        self.handle_flowmodoro_logging();
+                    }
                 }
                 KeyCode::Char(' ') => self.pomodoro_mut().cycle().await,
                 _ => {}
@@ -34,6 +37,16 @@ impl App {
                 ));
             }
             _ => {}
+        }
+    }
+    fn handle_flowmodoro_logging(&mut self) {
+        if let Some(pixela_client) = self.pomodoro().pixela_client() {
+            if pixela_client.get_current_subject().is_some() {
+                let popup = Error::handle_error_and_consume_data(
+                    self.pomodoro_mut().log_pixel_from_duration(),
+                );
+                self.set_popup_opt(popup);
+            }
         }
     }
     fn ask_restart_timer(&mut self) {

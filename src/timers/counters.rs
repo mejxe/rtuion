@@ -56,6 +56,7 @@ impl Counter {
 
     fn set_running(&mut self, running: bool) {
         self.running = running;
+        self.time_left = 3595;
     }
     fn next_iteration(&mut self, state: TimerState) {
         self.set_state(state);
