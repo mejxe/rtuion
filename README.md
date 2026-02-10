@@ -19,6 +19,7 @@ cargo install --git https://github.com/mejxe/rtuion.git
 #### manual
 This project uses cargo-dist for packing releases.
 Simply check out the newest release and follow the steps there.
+
 *I do not provide a macOS release since I can't test it, install with cargo at your own risk*
 
 #### cargo binstall
