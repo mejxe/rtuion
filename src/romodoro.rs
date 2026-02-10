@@ -1,4 +1,4 @@
-use std::{cell::RefCell, process::exit, rc::Rc};
+use std::{cell::RefCell, rc::Rc};
 
 use tokio_util::sync::CancellationToken;
 
@@ -9,7 +9,7 @@ use crate::{
     stats::pixela::{
         pixela_client::PixelaClient,
         pixela_user::PixelaUser,
-        subjects::{Minutes, Progress, Seconds, Subject, TimeUnit},
+        subjects::{Progress, Seconds, Subject, TimeUnit},
     },
     timers::{
         helper_structs::{TimerCommand, TimerState},

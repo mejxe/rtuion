@@ -1,4 +1,3 @@
-use std::process::exit;
 
 use ratatui::{
     layout::{Alignment, Constraint, Flex, Layout, Margin, Rect},

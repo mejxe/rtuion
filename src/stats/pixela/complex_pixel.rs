@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::{error::Result, stats::pixela::subjects::SubjectDataType};
 
 use super::{
-    helpers::{check_if_quantity_is_big_enough, get_from_pixela, send_to_pixela},
+    helpers::{check_if_quantity_is_big_enough, send_to_pixela},
     pixela_user::PixelaUser,
     subjects::{Progress, Subject, SubjectUnit},
 };

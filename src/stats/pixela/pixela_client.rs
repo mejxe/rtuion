@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fs, future::Future, process::exit, time::Duration, vec};
+use std::{collections::HashMap, fs, future::Future, time::Duration, vec};
 
 use crate::{
     error::{Error, FatalError, PixelaResponseError, Result, SettingsError, StatsError},

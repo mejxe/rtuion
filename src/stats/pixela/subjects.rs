@@ -141,7 +141,7 @@ pub type Seconds = i64;
 impl TimeUnit {
     pub fn round_hours(hours: Hours) -> HoursRounded {
         let f_part = hours % 1.0;
-        if (f_part > 0.8) {
+        if f_part > 0.8  {
             return hours.ceil() as usize;
         } else {
             return hours.floor() as usize;
