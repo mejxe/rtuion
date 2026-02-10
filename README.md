@@ -15,8 +15,11 @@ cargo install --git https://github.com/mejxe/rtuion.git
 ```
 
 ### Release
+#### manual
 This project uses cargo-dist for packing releases.
 Simply check out the newest release and follow the steps there.
+
+#### cargo binstall
 Alternatively if you have cargo installed you can download it with cargo binstall
 ```
 cargo binstall --git https://github.com/mejxe/rtuion.git
@@ -25,6 +28,10 @@ cargo binstall --git https://github.com/mejxe/rtuion.git
 ## Stats Tracking/Pixela Integration
 RTuion makes it possible to log your study sessions. To use it to the full potential you will have to make a [pixe.la](https://pixe.la/) account.
 The service is free (altough I encourage you to support pixe.la creator) and works great for tracking your progress.
+#### Important
+ To see your graph in rtuion it has to:
+ - Have a unit of minutes or hours (or hrs, mins, Minutes, Hours)
+ - Not have a unit of minutes and a type of float at the same time
 
 If you do not wish to use remote stats tracking, you can use the simple mode that will log your study sessions locally (you still have to provide username in the settings!).
 
@@ -33,6 +40,8 @@ If you do not wish to use remote stats tracking, you can use the simple mode tha
 ![Settings](images/settings.png)
 ![Stats](images/stats.png)
 
+## Contributing
+The project is not perfect, nor perfectly tested. If you find a bug or would like to suggeset a new feature, please submit an Issue.
 
 ## License
 rtuion is licensed under MIT license.
