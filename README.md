@@ -3,6 +3,7 @@ RTuion [ˈtujɔn] is a simple terminal interface timer with some extra features.
 ## Features
 - Simple and clean interface
 - Works in terminal
+- Multiplatform
 - Pomodoro timer
 - Flowmodoro timer
 - Simple Progress Tracking - log your study sessions
@@ -18,6 +19,7 @@ cargo install --git https://github.com/mejxe/rtuion.git
 #### manual
 This project uses cargo-dist for packing releases.
 Simply check out the newest release and follow the steps there.
+*I do not provide a macOS release since I can't test it, install with cargo at your own risk*
 
 #### cargo binstall
 Alternatively if you have cargo installed you can download it with cargo binstall
