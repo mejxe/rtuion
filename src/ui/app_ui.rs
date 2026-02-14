@@ -18,7 +18,7 @@ pub struct AppWidget<'a> {
 
 impl Widget for &mut AppWidget<'_> {
     fn render(self, area: ratatui::prelude::Rect, buf: &mut ratatui::prelude::Buffer) {
-        let tabs = ["Pomodoro Timer", "Settings", "Stats"];
+        let tabs = ["Timer", "Settings", "Stats"];
         let tab_titles: Vec<Span> = tabs
             .iter()
             .map(|t| Span::styled(*t, Style::default().fg(Color::White)))
@@ -41,13 +41,13 @@ impl Widget for &mut AppWidget<'_> {
             .constraints([
                 Constraint::Length(3), // Tab titles
                 Constraint::Min(1),    // Main content area
-                Constraint::Max(1),    // footer
+                Constraint::Length(1),    // footer
             ])
             .split(area);
 
         let tab_layout = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([Constraint::Max(38), Constraint::Min(1)])
+            .constraints([Constraint::Max(29), Constraint::Min(1)])
             .split(layout[0]);
 
         if let Some(popup) = self.app_context.popup_as_mut() {
