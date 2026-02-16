@@ -42,6 +42,7 @@ If you do not wish to use remote stats tracking, you can use the simple mode tha
 ![Timer](images/timer.png)
 ![Settings](images/settings.png)
 ![Stats](images/stats.png)
+![On Windows](images/windows.png)
 
 ## Contributing
 The project is not perfect, nor perfectly tested. If you find a bug or would like to suggeset a new feature, please submit an Issue.
