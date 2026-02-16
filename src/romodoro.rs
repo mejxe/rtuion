@@ -198,6 +198,6 @@ impl Pomodoro {
     }
     pub async fn restart_timer(&mut self) {
         self.timer.restart().await;
-        self.duration_since_last_save = 3595;
+        self.duration_since_last_save = 0;
     }
 }
