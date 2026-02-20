@@ -98,6 +98,12 @@ impl Subject {
     pub fn graph_name(&self) -> &str {
         &self.graph_name
     }
+    pub fn shortened_graph_name(&self) -> String {
+        self.graph_name
+            .split_ascii_whitespace()
+            .map(|w| w.chars().nth(0).unwrap_or('.'))
+            .collect()
+    }
     pub fn set_url(&mut self, url: String) {
         self.url = url;
     }
@@ -141,7 +147,7 @@ pub type Seconds = i64;
 impl TimeUnit {
     pub fn round_hours(hours: Hours) -> HoursRounded {
         let f_part = hours % 1.0;
-        if f_part > 0.8  {
+        if f_part > 0.8 {
             return hours.ceil() as usize;
         } else {
             return hours.floor() as usize;

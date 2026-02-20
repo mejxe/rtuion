@@ -13,13 +13,14 @@ use ratatui::style::palette::tailwind::SLATE;
 use ratatui::style::Modifier;
 use ratatui::style::Style;
 use ratatui::style::{Color, Stylize};
-use ratatui::text::Line;
-use ratatui::widgets::Widget;
+use ratatui::text::{Line, Text};
 use ratatui::widgets::{Block, List};
 use ratatui::widgets::{BorderType, HighlightSpacing};
 use ratatui::widgets::{Borders, ListItem};
 use ratatui::widgets::{Paragraph, StatefulWidget};
+use ratatui::widgets::{Widget, Wrap};
 
+use super::helpers;
 use super::ui_utils::HintProvider;
 const SELECTED_STYLE: Style = Style::new().bg(SLATE.c800).add_modifier(Modifier::BOLD);
 pub struct StatsTab<'a> {
@@ -46,8 +47,8 @@ impl Widget for &mut StatsTab<'_> {
         let right_column_layout = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Percentage(20), // Sync area
-                Constraint::Percentage(80), // Subjects area
+                Constraint::Max(6),  // Sync area
+                Constraint::Fill(1), // Subjects area
             ])
             .split(top_layout[1]);
 
@@ -105,6 +106,7 @@ impl<'a> StatsTab<'a> {
                             pixel: pix,
                             selected: self.pixela_client.selected_to_send(index),
                             rounded: IsRounded::No,
+                            available_size: area.width,
                         }
                         .into()
                     })
@@ -116,6 +118,14 @@ impl<'a> StatsTab<'a> {
             .highlight_spacing(HighlightSpacing::Always);
             StatefulWidget::render(list, area, buf, self.pixela_client.pixels.state_mut());
         }
+        let pixels = &self.pixela_client.subjects;
+        helpers::render_scroll_indicators(
+            inner_area,
+            buf,
+            pixels.items().len(),
+            pixels.state(),
+            GREEN,
+        );
     }
 
     fn render_sync(&self, area: Rect, buf: &mut Buffer) {
@@ -131,14 +141,14 @@ impl<'a> StatsTab<'a> {
         let sync_layout = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Length(1), // Status line
-                Constraint::Min(1),    // Message area
+                Constraint::Max(2),  // Status line
+                Constraint::Fill(1), // Message area
             ])
             .split(inner_area);
 
         let (status, message) = match self.pixela_client.logged_in() {
             false => (
-                "Status: Not Logged In to Pixela".into(),
+                "Status: Logged out".into(),
                 format!(
                     "Press 'L' to sync account ({})",
                     self.pixela_client.user.username()
@@ -152,16 +162,18 @@ impl<'a> StatsTab<'a> {
                 "You can use complex stats tracking!".into(),
             ),
         };
-        let status_text = Paragraph::new(status)
+        let status_text = Paragraph::new(Text::from(status))
             .style(Style::default().fg(YELLOW))
-            .alignment(Alignment::Center);
+            .alignment(Alignment::Center)
+            .wrap(Wrap { trim: true });
         status_text.render(sync_layout[0], buf);
 
         // Sync message area
-        let message_text = Paragraph::new(message)
+        let message_text = Paragraph::new(Text::from(message))
             .style(Style::default().fg(Color::Gray))
             .alignment(Alignment::Center)
-            .bold();
+            .bold()
+            .wrap(Wrap { trim: true });
         message_text.render(sync_layout[1], buf);
     }
 
@@ -182,6 +194,7 @@ impl<'a> StatsTab<'a> {
         if self.pixela_client.subjects().len() < 2 {
             block.render(area, buf);
             let no_subjects_text = Paragraph::new("Subjects appear after logging in...")
+                .wrap(Wrap { trim: true })
                 .alignment(Alignment::Center)
                 .style(Style::default().fg(Color::Gray));
             no_subjects_text.render(inner_area, buf);
@@ -205,6 +218,7 @@ impl<'a> StatsTab<'a> {
                                 .get_current_subject()
                                 .unwrap_or_else(|| self.pixela_client.get_subject(0).unwrap())
                                 == **subject,
+                            available_size: area.width,
                         }
                         .into()
                     })
@@ -214,7 +228,15 @@ impl<'a> StatsTab<'a> {
             .highlight_style(SELECTED_STYLE)
             .highlight_symbol(">")
             .highlight_spacing(HighlightSpacing::Always);
-            StatefulWidget::render(list, area, buf, self.pixela_client.subjects.state_mut());
+            let subjects = &mut self.pixela_client.subjects;
+            StatefulWidget::render(list, area, buf, subjects.state_mut());
+            helpers::render_scroll_indicators(
+                area,
+                buf,
+                subjects.items().len(),
+                subjects.state(),
+                GREEN,
+            );
         }
     }
 
@@ -242,6 +264,7 @@ pub(crate) struct PixelToListWrapper<'a> {
     pub(crate) pixel: &'a Pixel,
     pub(crate) selected: bool,
     pub(crate) rounded: IsRounded,
+    pub(crate) available_size: u16,
 }
 impl From<PixelToListWrapper<'_>> for ListItem<'_> {
     fn from(value: PixelToListWrapper) -> Self {
@@ -251,24 +274,29 @@ impl From<PixelToListWrapper<'_>> for ListItem<'_> {
             (false, 0)
         };
         let (pixel_text, unit) = match value.pixel {
-            Pixel::Complex(complex) => (
-                format!(
+            Pixel::Complex(complex) => {
+                let mut text = format!(
                     " {} | {} | {}",
                     complex.subject().graph_name(),
-                    complex.date().split('T').next().unwrap_or("N/A"),
+                    complex.date(),
                     complex.display_string(),
-                ),
-                complex.subject().unit().clone(),
-            ),
+                );
+                if text.len() + 5 >= value.available_size.into() {
+                    text = format!(
+                        " {} | {} | {}",
+                        complex.subject().shortened_graph_name(),
+                        complex.date(),
+                        complex.display_string()
+                    )
+                };
+                (text, complex.subject().unit().clone())
+            }
             Pixel::Simple(simple) => (
-                format!(
-                    " {} | {}m",
-                    simple.date().split('T').next().unwrap_or("N/A"),
-                    simple.progress()
-                ),
+                format!(" {} | {}m", simple.date(), simple.progress()),
                 SubjectUnit::Minutes,
             ),
         };
+        let pixel_text = Text::from(pixel_text);
         let unit_display = unit.short_string();
         let line = match (value.selected, rounded) {
             (false, _) if matches!(value.pixel, Pixel::Simple(_)) => Line::styled(
@@ -294,14 +322,22 @@ impl From<PixelToListWrapper<'_>> for ListItem<'_> {
 pub(crate) struct SubjectToListWrapper<'a> {
     pub(crate) subject: &'a Subject,
     pub(crate) selected: bool,
+    pub(crate) available_size: u16,
 }
 impl From<SubjectToListWrapper<'_>> for ListItem<'_> {
     fn from(value: SubjectToListWrapper) -> Self {
-        let subject_text = format!(
+        let mut subject_text = format!(
             "{} | unit: {}",
             value.subject.graph_name().to_string(),
-            value.subject.unit()
+            value.subject.unit().short_string()
         );
+        if subject_text.len() + 5 > value.available_size.into() {
+            subject_text = format!(
+                "{} | unit: {}",
+                value.subject.shortened_graph_name(),
+                value.subject.unit().short_string()
+            );
+        }
 
         let line = match (value.selected, value.subject.is_dummy()) {
             (true, true) => Line::styled("None", Style::default().fg(GREEN)).into(),

@@ -1,6 +1,7 @@
 pub mod app_ui;
 mod assets;
 pub mod graph;
+pub mod helpers;
 pub mod pomodoro_tab;
 pub mod popup;
 pub mod settings_tab;

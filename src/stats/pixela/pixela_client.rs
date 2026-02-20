@@ -470,9 +470,6 @@ impl PixelaClient {
                     entry.0 .1.clone(),
                     entry.0 .0.clone().to_string(),
                 );
-                if entry.1 .1 > 1 {
-                    pixel.into_aggregate();
-                }
                 Pixel::Complex(pixel)
             })
             .collect();

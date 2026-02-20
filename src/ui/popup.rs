@@ -1,4 +1,3 @@
-
 use ratatui::{
     layout::{Alignment, Constraint, Flex, Layout, Margin, Rect},
     style::{Color, Modifier, Style, Stylize},
@@ -10,6 +9,7 @@ use ratatui::{
 use crate::{
     popup::{Popup, PopupKind},
     stats::{pixel::Pixel, pixela::complex_pixel::IsRounded},
+    ui::helpers::render_scroll_indicators,
 };
 
 use super::{stats_tab::PixelToListWrapper, BG, GREEN, RED, YELLOW};
@@ -192,6 +192,7 @@ impl Popup {
                     pixel: pix,
                     selected: true,
                     rounded,
+                    available_size: area.width,
                 }
                 .into()
             })
@@ -210,7 +211,7 @@ impl Popup {
 
         use ratatui::widgets::StatefulWidget;
         StatefulWidget::render(list, layout[1], buf, list_state);
-        render_scroll_indicators(layout[1], buf, pixels, list_state, GREEN);
+        render_scroll_indicators(layout[1], buf, pixels.len(), list_state, GREEN);
 
         // Buttons
         let button_layout = Layout::default()
@@ -283,6 +284,7 @@ impl Popup {
                     pixel: pix,
                     selected: true,
                     rounded: IsRounded::No,
+                    available_size: area.width,
                 }
                 .into()
             })
@@ -306,7 +308,7 @@ impl Popup {
 
         use ratatui::widgets::StatefulWidget;
         StatefulWidget::render(list, layout[1], buf, list_state);
-        render_scroll_indicators(layout[1], buf, pixels, list_state, GREEN);
+        render_scroll_indicators(layout[1], buf, pixels.len(), list_state, GREEN);
 
         let ok_paragraph = Paragraph::new("Press any key to continue")
             .alignment(Alignment::Center)
@@ -331,46 +333,4 @@ pub fn popup_area(area: Rect, percent_x: u16, percent_y: u16) -> Rect {
 }
 pub fn list_height(area: &Rect) -> usize {
     ((area.height * 60) / 100).saturating_sub(3) as usize
-}
-fn render_scroll_indicators(
-    list_area: Rect,
-    buf: &mut ratatui::prelude::Buffer,
-    pixels: &[Pixel],
-    list_state: &ListState,
-    color: Color,
-) {
-    let list_inner = list_area.inner(Margin {
-        horizontal: 0,
-        vertical: 1,
-    });
-    let offset = list_state.offset();
-    let list_height = list_inner.height as usize;
-    let total_items = pixels.len();
-    let _selected = list_state.selected().unwrap_or(0);
-
-    if offset > 0 {
-        let up_arrow = Paragraph::new("▲")
-            .style(Style::default().fg(color))
-            .alignment(Alignment::Center);
-        let arrow_area = Rect {
-            x: list_area.x,
-            y: list_area.y,
-            width: list_area.width,
-            height: 1,
-        };
-        up_arrow.render(arrow_area, buf);
-    }
-
-    if total_items > list_height && offset < total_items.saturating_sub(list_height) {
-        let down_arrow = Paragraph::new("▼")
-            .style(Style::default().fg(color))
-            .alignment(Alignment::Center);
-        let arrow_area = Rect {
-            x: list_area.x,
-            y: list_area.y + list_area.height - 1,
-            width: list_area.width,
-            height: 1,
-        };
-        down_arrow.render(arrow_area, buf);
-    }
 }

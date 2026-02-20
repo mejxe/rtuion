@@ -109,10 +109,11 @@ impl Widget for PomodoroTab<'_> {
                 Constraint::Length(1),  // Now text
                 Constraint::Max(5),     // Small gap
                 Constraint::Length(10), // ASCII timer
-                Constraint::Length(3),  // ASCII Spacer
-                Constraint::Length(7),  // ASCII Animation
+                Constraint::Length(3),  // Spacer
+                Constraint::Length(0),  // ASCII Animation
+                Constraint::Length(1),  // Subject select
                 Constraint::Length(1),  // ASCII Spacer
-                Constraint::Max(3),     // Pomodoro/Flowmodoro layouts
+                Constraint::Max(7),     // Pomodoro/Flowmodoro layouts
             ])
             .flex(ratatui::layout::Flex::Center)
             .split(outer_block.inner(area));
@@ -122,9 +123,10 @@ impl Widget for PomodoroTab<'_> {
                 Constraint::Length(0),  // Small gap
                 Constraint::Length(1),  // Now text
                 Constraint::Max(3),     // Small gap
-                Constraint::Length(10), // ASCII timer
+                Constraint::Length(10), // ASCII Animation
                 Constraint::Length(2),  // ASCII Spacer
-                Constraint::Length(1),  // ASCII Animation
+                Constraint::Length(1),  // Timer
+                Constraint::Length(1),  // Subject select
                 Constraint::Length(3),  // ASCII Spacer
                 Constraint::Max(7),     // Pomodoro/Flowmodoro layouts
             ])
@@ -149,13 +151,11 @@ impl Widget for PomodoroTab<'_> {
         now_paragraph.render(layout[1], buf);
         timer_text.render(layout[3], buf);
         spacer.render(spacer_layout[0], buf);
-        let layout_spot = if hide_countdown {
+        let layout_spot = 8;
+        if hide_countdown {
             animation_text.render(layout[5], buf);
-            7
-        } else {
-            5
         };
-        self.render_subject_select(layout[layout_spot - 1], buf);
+        self.render_subject_select(layout[6], buf);
         match self.pomodoro.timer.counter_mode() {
             CounterMode::Countdown => self.render_pomodoro_ui(layout[layout_spot], buf),
             CounterMode::Countup => self.render_flowmodoro_ui(layout[layout_spot], buf),

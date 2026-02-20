@@ -595,12 +595,24 @@ fn stats_tab(
             Style::default().fg(Color::DarkGray)
         })
         .left_aligned();
-    let token_display = stats_settings
-        .pixela_token
-        .as_ref()
-        .map(|t| "•".repeat(t.len().min(12)))
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| "-".to_string());
+    let token_display = match (current_mode, selected_num) {
+        (Mode::Input, 2) => stats_settings
+            .pixela_token
+            .as_ref()
+            .map(|t| {
+                let mut display_string = "•".repeat(t.len().min(12).saturating_sub(1));
+                display_string.push(t.chars().last().unwrap_or('•'));
+                display_string
+            })
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| "-".to_string()),
+        _ => stats_settings
+            .pixela_token
+            .as_ref()
+            .map(|t| "•".repeat(t.len().min(12)))
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| "-".to_string()),
+    };
     let mut token_value = UIHelper::create_settings_paragraph(
         &token_display,
         Some(if stats_settings.stats_on {
@@ -613,7 +625,7 @@ fn stats_tab(
     )
     .left_aligned();
     match selected_num {
-        1 if current_mode == Mode::Input => username_value = username_value.rapid_blink(),
+        1 if current_mode == Mode::Input => username_value = username_value.slow_blink(),
         2 if current_mode == Mode::Input => token_value = token_value.slow_blink(),
         _ => {}
     }
