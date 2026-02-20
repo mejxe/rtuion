@@ -118,13 +118,13 @@ impl<'a> StatsTab<'a> {
             .highlight_spacing(HighlightSpacing::Always);
             StatefulWidget::render(list, area, buf, self.pixela_client.pixels.state_mut());
         }
-        let pixels = &self.pixela_client.subjects;
+        let pixels = &self.pixela_client.pixels;
         helpers::render_scroll_indicators(
             inner_area,
             buf,
             pixels.items().len(),
             pixels.state(),
-            GREEN,
+            BLUE,
         );
     }
 
@@ -235,7 +235,7 @@ impl<'a> StatsTab<'a> {
                 buf,
                 subjects.items().len(),
                 subjects.state(),
-                GREEN,
+                YELLOW,
             );
         }
     }

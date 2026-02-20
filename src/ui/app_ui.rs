@@ -41,7 +41,7 @@ impl Widget for &mut AppWidget<'_> {
             .constraints([
                 Constraint::Length(3), // Tab titles
                 Constraint::Min(1),    // Main content area
-                Constraint::Length(1),    // footer
+                Constraint::Length(1), // footer
             ])
             .split(area);
 
@@ -83,9 +83,9 @@ impl Widget for &mut AppWidget<'_> {
                 self.render_footer(layout[2], buf, hints);
             }
             tabs::Tabs::StatsTab => {
-                //if window_too_small(90, 35, area, buf) {
-                //    return;
-                //}
+                if window_too_small(65, 30, area, buf) {
+                    return;
+                }
                 let (rendered_stats, hints) = if let Some(stats_client) =
                     self.app_context.pomodoro_mut().pixela_client_as_mut()
                 {
