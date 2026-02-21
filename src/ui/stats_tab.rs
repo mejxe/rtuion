@@ -363,11 +363,11 @@ impl HintProvider for StatsTab<'_> {
         ];
         let mut based_on_state = match self.pixela_client.focused_pane() {
             PixelaTabs::Pixels => {
-                let mut basic = vec![FooterHint::new("Space|RET", "Select Pixel(s)")];
+                let mut basic = vec![FooterHint::new("Space", "Select Pixel")];
                 if !self.pixela_client.get_selected_pixels().is_empty() {
                     basic.append(&mut vec![
                         FooterHint::new("P", "Push to Pixela"),
-                        FooterHint::new("d", "Delete pixel"),
+                        FooterHint::new("d", "Delete Pixel"),
                     ]);
                 };
                 basic
